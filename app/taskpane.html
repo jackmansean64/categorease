@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Task Pane</title>
+  <title>CategorEase</title>
   <!-- Load office.js and xlwings.min.js -->
   <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script type="text/javascript"
@@ -13,15 +13,11 @@
   <link rel="stylesheet"
     href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
     integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-  <!-- Load Custom Functions -->
-  <script type="text/javascript" src="/xlwings/custom-functions-code"></script>
 </head>
 
 <body>
   <div class="container-fluid pt-3">
-    <!-- Put two buttons on the task pane -->
-    <button class="btn btn-primary btn-sm" id="btn-hello-taskpane" type="button">Run hello</button>
-    <button class="btn btn-primary btn-sm" id="btn-capitalize-sheet-names" type="button">Capitalize sheet names</button>
+    <button class="btn btn-primary btn-sm" id="btn-capitalize-sheet-names" type="button">Run</button>
   </div>
   <script>
     // Initialize Office.js
@@ -33,23 +29,7 @@
     };
 
     // Add click event listeners to buttons on task pane
-    document.getElementById("btn-hello-taskpane").addEventListener("click", helloTaskpane);
     document.getElementById("btn-capitalize-sheet-names").addEventListener("click", capitalizeSheetNamesPrompt);
-
-    // Sample 1: Button on Task pane
-    // Use runPython with the desired endpoint of your web app 
-    function helloTaskpane() {
-      xlwings.runPython(window.location.origin + "/hello");
-    }
-
-    // Sample 2: Button on Ribbon
-    // Needs event.completed() and Office.actions.associate
-    // "hello-ribbon" is the identifier in manifest.xml
-    function helloRibbon(event) {
-      xlwings.runPython(window.location.origin + "/hello");
-      event.completed();
-    }
-    Office.actions.associate("hello-ribbon", helloRibbon);
 
     // Sample 3: How to use alerts
     function capitalizeSheetNamesPrompt() {
