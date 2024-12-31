@@ -29,24 +29,24 @@
     };
 
     // Add click event listeners to buttons on task pane
-    document.getElementById("btn-capitalize-sheet-names").addEventListener("click", capitalizeSheetNamesPrompt);
+    document.getElementById("btn-capitalize-sheet-names").addEventListener("click", categorizeTransactionsPrompt);
 
     // Sample 3: How to use alerts
-    function capitalizeSheetNamesPrompt() {
-      xlwings.runPython(window.location.origin + "/capitalize-sheet-names-prompt");
+    function categorizeTransactionsPrompt() {
+      xlwings.runPython(window.location.origin + "/categorize-transactions-prompt");
     }
     // This function gets called when the user clicks a button in the alert shown
     // by capitalizeSheetNamesPrompt. Use this function name as the callback parameter
     // in Python: book.app.alert(callback="capitalizeSheetNames")
-    function capitalizeSheetNames(arg) {
+    function categorizeTransactions(arg) {
       if (arg == "ok") {
-        xlwings.runPython(window.location.origin + "/capitalize-sheet-names");
+        xlwings.runPython(window.location.origin + "/categorize-transactions");
       } else {
         // cancel
       }
     }
     // Make sure to register the callback function
-    xlwings.registerCallback(capitalizeSheetNames);
+    xlwings.registerCallback(categorizeTransactions);
   </script>
 </body>
 

@@ -5,10 +5,10 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>622db60b-5e21-4c2f-b90a-bdbc18d705e6</Id>
   <Version>1.0.0</Version>
-  <ProviderName>xlwings</ProviderName>
+  <ProviderName>Sean Jackman</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="xlwings Quickstart" />
-  <Description DefaultValue="This is the xlwings quickstart app" />
+  <DisplayName DefaultValue="CategorEase" />
+  <Description DefaultValue="This is the CategorEase app" />
   <IconUrl DefaultValue="https://127.0.0.1:8000/icons/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://127.0.0.1:8000/icons/icon-64.png" />
   <SupportUrl DefaultValue="https://www.xlwings.org/contact" />

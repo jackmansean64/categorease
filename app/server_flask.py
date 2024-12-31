@@ -7,6 +7,8 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 
+from app.categorize import read_excel_data
+
 app = Flask(__name__)
 CORS(app)
 
@@ -34,24 +36,23 @@ def hello():
         return book.json()
 
 
-@app.route("/capitalize-sheet-names-prompt", methods=["POST"])
-def capitalize_sheet_names_prompt():
+@app.route("/categorize-transactions-prompt", methods=["POST"])
+def categorize_transactions_prompt():
     with xw.Book(json=request.json) as book:
         book.app.alert(
-            prompt="This will capitalize all sheet names!",
+            prompt="This will categorize X transactions at an estimated cost of Y.",
             title="Are you sure?",
             buttons="ok_cancel",
             # this is the JS function name that gets called when the user clicks a button
-            callback="capitalizeSheetNames",
+            callback="categorizeTransactions",
         )
         return book.json()
 
 
-@app.route("/capitalize-sheet-names", methods=["POST"])
-def capitalize_sheet_names():
+@app.route("/categorize-transactions", methods=["POST"])
+def categorize_transactions():
     with xw.Book(json=request.json) as book:
-        for sheet in book.sheets:
-            sheet.name = sheet.name.upper()
+        transactions, categories = read_excel_data(book)
         return book.json()
 
 
