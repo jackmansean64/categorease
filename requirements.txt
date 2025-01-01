@@ -6,3 +6,8 @@ pandas==2.2.3
 Werkzeug==2.2.2
 xlwings==0.30.12
 pydantic
+toolkit
+langchain
+langchain_openai
+langchain_aws
+python-dotenv

@@ -13,8 +13,8 @@ class Transaction(BaseModel):
     account: Optional[str] = Field(alias="Account", default=None)
     account_number: Optional[str] = Field(alias="Account #", default=None)
     institution: Optional[str] = Field(alias="Institution", default=None)
-    month: Optional[str] = Field(alias="Month", default=None)
-    week: Optional[str] = Field(alias="Week", default=None)
+    month: Optional[datetime] = Field(alias="Month", default=None)
+    week: Optional[datetime] = Field(alias="Week", default=None)
     transaction_id: Optional[str] = Field(alias="Transaction ID", default=None)
     account_id: Optional[str] = Field(alias="Account ID", default=None)
     check_number: Optional[str] = Field(alias="Check Number", default=None)
@@ -26,3 +26,10 @@ class Category(BaseModel):
     category: str = Field(alias="Category")
     group: Optional[str] = Field(alias="Group", default=None)
     type: Optional[str] = Field(alias="Type", default=None)
+
+
+class CategorizedTransaction(BaseModel):
+    transaction_id: str
+    date: datetime
+    description: str
+    category: str

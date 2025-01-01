@@ -7,7 +7,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 
-from app.categorize import read_excel_data
+from app.categorize import categorize_transactions_in_book
 
 app = Flask(__name__)
 CORS(app)
@@ -52,7 +52,7 @@ def categorize_transactions_prompt():
 @app.route("/categorize-transactions", methods=["POST"])
 def categorize_transactions():
     with xw.Book(json=request.json) as book:
-        transactions, categories = read_excel_data(book)
+        book = categorize_transactions_in_book(book)
         return book.json()
 
 
