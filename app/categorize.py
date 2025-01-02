@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Tuple
+
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 from pydantic import TypeAdapter
@@ -12,88 +14,91 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 
 
 def categorize_transactions_in_book(book: Book) -> Book:
-    transactions_df, categories_df = _read_excel_data(book)
-    transactions = _convert_df_to_transactions(transactions_df)
-    categories = _convert_df_to_categories(categories_df)
+    previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
+    categories = retrieve_categories(book)
 
-    categorized_transactions = [transaction for transaction in transactions if transaction.category]
-    uncategorized_transactions = [transaction for transaction in transactions if not transaction.category]
-
-    print(f"Uncategorized Transaction Total: {len(uncategorized_transactions)}")
-
-    categorized_transactions: List[CategorizedTransaction] = parallel_invoke_function(
-        function=process_transaction,
+    categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = parallel_invoke_function(
+        function=model_categorize_transaction,
         variable_args=uncategorized_transactions,
         categories=categories,
-        categorized_transactions=categorized_transactions,
+        categorized_transactions=previously_categorized_transactions,
     )
+
+    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    print(f"Total cost: ${total_cost:.4f}")
+
+    categorized_transactions = [transaction for transaction, _ in categorized_transactions_and_costs]
 
     return update_categories_in_sheet(book, categorized_transactions)
 
 
-def process_transaction(transaction, categories, categorized_transactions):
+def model_categorize_transaction(transaction, categories, categorized_transactions) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
 
-    analysis_prompt_template = PromptTemplate.from_template(analysis_template)
-    serialization_prompt_template = PromptTemplate.from_template(serialize_categories_template)
-
-    formatted_analysis_prompt = analysis_prompt_template.format(
-        categories=TypeAdapter(List[Category]).dump_python(categories),
-        examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions[:200]),
-        transaction=transaction.model_dump(),
+    analysis_response, analysis_cost = model_analyze_transaction(
+        transaction,
+        categories,
+        categorized_transactions,
+        chat_models.claude_35_haiku_chat,
+        ModelName.HAIKU_3_5,
     )
 
-    analysis_response = chat_models.claude_35_v2_sonnet_chat.invoke(formatted_analysis_prompt)
-
-    formatted_serialization_prompt = serialization_prompt_template.format(
-        transaction=transaction,
-        json_structure=CategorizedTransaction.model_json_schema()
+    parsed_category, parsing_cost = model_parse_category_from_analysis(
+        transaction,
+        analysis_response,
+        chat_models.claude_35_haiku_chat,
+        ModelName.HAIKU_3_5,
     )
 
-    serialization_prompt_with_analysis_response = [
-        AIMessage(content=analysis_response.content),
-        HumanMessage(content=formatted_serialization_prompt),
-    ]
+    total_cost = analysis_cost + parsing_cost
 
-    return CategorizedTransaction.model_validate_json(
-        chat_models.claude_35_haiku_chat.invoke(serialization_prompt_with_analysis_response).content
-    )
+    return parsed_category, total_cost
 
 
-def analyze_transaction(
-        uncategorized_transaction: Transaction,
-        categories: List[Category],
-        categorized_transactions: List[Transaction]
-) -> str:
+def model_analyze_transaction(
+    uncategorized_transaction: Transaction,
+    categories: List[Category],
+    categorized_transactions: List[Transaction],
+    chat_model: BaseChatModel,
+    model_name: ModelName,
+) -> Tuple[str, float]:
     TRANSACTION_HISTORY_LENGTH = 200
     prompt_template = PromptTemplate.from_template(analysis_template)
 
     formatted_prompt = prompt_template.format(
         categories=TypeAdapter(List[Category]).dump_python(categories),
-        examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions[:TRANSACTION_HISTORY_LENGTH]),
+        examples=TypeAdapter(List[Transaction]).dump_python(
+            categorized_transactions[:TRANSACTION_HISTORY_LENGTH]
+        ),
         transaction=uncategorized_transaction.model_dump(),
     )
     # print(formatted_prompt)
 
-    chat_models = ChatModelsSetup()
-    analysis_response = chat_models.claude_35_haiku_chat.invoke(formatted_prompt)
+    analysis_response = chat_model.invoke(formatted_prompt)
 
     total_cost = calculate_total_prompt_cost(
         analysis_response.response_metadata["usage"]["prompt_tokens"],
         analysis_response.response_metadata["usage"]["completion_tokens"],
-        ModelName.HAIKU_3_5
+        model_name,
     )
-    print(f"Total Cost: ${total_cost}")
+    # print(f"Total Cost: ${total_cost}")
 
-    return analysis_response.content
+    return analysis_response.content, total_cost
 
 
-def parse_category_from_analysis(uncategorized_transaction: Transaction, analysis_response: str) -> Category:
-    serialization_prompt_template = PromptTemplate.from_template(serialize_categories_template)
+def model_parse_category_from_analysis(
+    uncategorized_transaction: Transaction,
+    analysis_response: str,
+    chat_model: BaseChatModel,
+    model_name: ModelName,
+) -> Tuple[Category, float]:
+    serialization_prompt_template = PromptTemplate.from_template(
+        serialize_categories_template
+    )
 
     formatted_prompt = serialization_prompt_template.format(
         transaction=uncategorized_transaction,
-        json_structure=CategorizedTransaction.model_json_schema()
+        json_structure=CategorizedTransaction.model_json_schema(),
     )
 
     prompt = [
@@ -101,22 +106,23 @@ def parse_category_from_analysis(uncategorized_transaction: Transaction, analysi
         HumanMessage(content=formatted_prompt),
     ]
 
-    chat_models = ChatModelsSetup()
-    category_assignment_response = chat_models.claude_35_haiku_chat.invoke(prompt)
-    assigned_category = CategorizedTransaction.model_validate_json(category_assignment_response.content)
+    category_assignment_response = chat_model.invoke(prompt)
+    assigned_category = CategorizedTransaction.model_validate_json(
+        category_assignment_response.content
+    )
     # print(assigned_category)
 
     total_cost = calculate_total_prompt_cost(
         category_assignment_response.response_metadata["usage"]["prompt_tokens"],
         category_assignment_response.response_metadata["usage"]["completion_tokens"],
-        ModelName.HAIKU_3_5
+        model_name,
     )
-    print(f"Total Cost: ${total_cost}")
+    # print(f"Total Cost: ${total_cost}")
 
-    return assigned_category
+    return assigned_category, total_cost
 
 
-def _read_excel_data(book: Book) -> tuple[pd.DataFrame, pd.DataFrame]:
+def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transaction]]:
     transaction_columns = [
         "Date",
         "Description",
@@ -133,27 +139,21 @@ def _read_excel_data(book: Book) -> tuple[pd.DataFrame, pd.DataFrame]:
         "Account ID",
         "Check Number",
         "Full Description",
-        "Date Added"
+        "Date Added",
     ]
 
-    category_columns = [
-        "Category",
-        "Group",
-        "Type"
-    ]
-
-    transactions_sheet = book.sheets['Transactions']
-    transactions_data = transactions_sheet.range('A1').expand().value
+    transactions_sheet = book.sheets["Transactions"]
+    transactions_data = transactions_sheet.range("A1").expand().value
     transactions_df = pd.DataFrame(transactions_data[1:], columns=transactions_data[0])
 
-    transactions_df['Date'] = pd.to_datetime(transactions_df['Date'])
-    transactions_df['Date Added'] = pd.to_datetime(transactions_df['Date Added'])
+    transactions_df["Date"] = pd.to_datetime(transactions_df["Date"])
+    transactions_df["Date Added"] = pd.to_datetime(transactions_df["Date Added"])
     transactions_df = transactions_df.astype(
         {
-            'Account #': str,
-            'Transaction ID': str,
-            'Account ID': str,
-            'Check Number': str
+            "Account #": str,
+            "Transaction ID": str,
+            "Account ID": str,
+            "Check Number": str,
         }
     )
     for col in transaction_columns:
@@ -161,15 +161,28 @@ def _read_excel_data(book: Book) -> tuple[pd.DataFrame, pd.DataFrame]:
             transactions_df[col] = None
     transactions_df = transactions_df[transaction_columns]
 
-    categories_sheet = book.sheets['Categories']
-    categories_data = categories_sheet.range('A1').expand().value
+    transactions = _convert_df_to_transactions(transactions_df)
+
+    categorized_transactions = [
+        transaction for transaction in transactions if transaction.category
+    ]
+    uncategorized_transactions = [
+        transaction for transaction in transactions if not transaction.category
+    ]
+    return categorized_transactions, uncategorized_transactions
+
+
+def retrieve_categories(book: Book) -> List[Category]:
+    category_columns = ["Category", "Group", "Type"]
+
+    categories_sheet = book.sheets["Categories"]
+    categories_data = categories_sheet.range("A1").expand().value
     categories_df = pd.DataFrame(categories_data[1:], columns=categories_data[0])
     for col in category_columns:
         if col not in categories_df.columns:
             categories_df[col] = None
     categories_df = categories_df[category_columns]
-
-    return transactions_df, categories_df
+    return _convert_df_to_categories(categories_df)
 
 
 def clean_amount(amount):
@@ -177,7 +190,7 @@ def clean_amount(amount):
         return None
     if isinstance(amount, str):
         # Remove currency symbol and commas
-        cleaned = amount.replace('$', '').replace(',', '').strip()
+        cleaned = amount.replace("$", "").replace(",", "").strip()
         return float(cleaned)
     return float(amount)
 
@@ -186,13 +199,22 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     df = df.copy()
 
     # Clean amount column first
-    df['Amount'] = df['Amount'].apply(clean_amount)
+    df["Amount"] = df["Amount"].apply(clean_amount)
 
     # Clean all optional columns
     columns_to_clean = [
-        'Category', 'Labels', 'Notes', 'Check Number',
-        'Account', 'Account #', 'Institution', 'Month',
-        'Week', 'Transaction ID', 'Account ID', 'Full Description'
+        "Category",
+        "Labels",
+        "Notes",
+        "Check Number",
+        "Account",
+        "Account #",
+        "Institution",
+        "Month",
+        "Week",
+        "Transaction ID",
+        "Account ID",
+        "Full Description",
     ]
     for col in columns_to_clean:
         df[col] = df[col].where(pd.notna(df[col]), None)
@@ -203,7 +225,9 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
             transaction = Transaction(**row.to_dict())
             transactions.append(transaction)
         except Exception as e:
-            raise ValueError(f"Row {index} failed validation: {str(e)}\nData: {row.to_dict()}")
+            raise ValueError(
+                f"Row {index} failed validation: {str(e)}\nData: {row.to_dict()}"
+            )
 
     return transactions
 
@@ -212,7 +236,7 @@ def _convert_df_to_categories(df: pd.DataFrame) -> List[Category]:
     df = df.copy()
 
     # Clean optional columns
-    columns_to_clean = ['Group', 'Type']
+    columns_to_clean = ["Group", "Type"]
     for col in columns_to_clean:
         df[col] = df[col].where(pd.notna(df[col]), None)
 
@@ -222,12 +246,16 @@ def _convert_df_to_categories(df: pd.DataFrame) -> List[Category]:
             category = Category(**row.to_dict())
             categories.append(category)
         except Exception as e:
-            raise ValueError(f"Row {index} failed validation: {str(e)}\nData: {row.to_dict()}")
+            raise ValueError(
+                f"Row {index} failed validation: {str(e)}\nData: {row.to_dict()}"
+            )
 
     return categories
 
 
-def update_categories_in_sheet(book: Book, categorized_transactions: List[CategorizedTransaction]) -> Book:
+def update_categories_in_sheet(
+    book: Book, categorized_transactions: List[CategorizedTransaction]
+) -> Book:
     """
     Updates the categories in the transactions sheet for the categorized transactions.
     If the transaction already has a category it will not be overwritten.

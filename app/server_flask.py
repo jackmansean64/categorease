@@ -7,7 +7,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 
-from app.categorize import categorize_transactions_in_book
+from app.categorize import categorize_transactions_in_book, retrieve_transactions
 
 app = Flask(__name__)
 CORS(app)
@@ -39,8 +39,10 @@ def hello():
 @app.route("/categorize-transactions-prompt", methods=["POST"])
 def categorize_transactions_prompt():
     with xw.Book(json=request.json) as book:
+        _, uncategorized_transactions = retrieve_transactions(book)
+        num_uncategorized = len(uncategorized_transactions)
         book.app.alert(
-            prompt="This will categorize X transactions at an estimated cost of Y.",
+            prompt=f"This will categorize {num_uncategorized} uncategorized transactions.",
             title="Are you sure?",
             buttons="ok_cancel",
             # this is the JS function name that gets called when the user clicks a button
