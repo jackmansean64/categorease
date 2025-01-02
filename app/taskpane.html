@@ -2,68 +2,95 @@
 <html lang="en">
 
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CategorEase</title>
-  <!-- Load office.js and xlwings.min.js -->
-  <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-  <script type="text/javascript"
-    src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.30.12/xlwingsjs/dist/xlwings.min.js"></script>
-  <!-- Bootstrap with the xlwings theme -->
-  <link rel="stylesheet"
-    href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
-    integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-  <style>
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px;
-      background-color: #f8f9fa;
-      border-radius: 5px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CategorEase</title>
+    <!-- Load office.js and xlwings.min.js -->
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <script type="text/javascript"
+            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.30.12/xlwingsjs/dist/xlwings.min.js"></script>
+    <!-- Bootstrap with the xlwings theme -->
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
+          integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
+    <style>
+        .header {
+            display: flex;
+            justify-content: center;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
 
-    .header img {
-      height: 40px;
-    }
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
-    .header h1 {
-      font-size: 1.5rem;
-      margin: 0;
-      font-weight: bold;
-      color: #007bff;
-    }
+        .header img {
+            height: 40px;
+        }
 
-    .button-container {
-      text-align: center;
-      margin-top: 20px;
-    }
+        .header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+            font-weight: bold;
+            color: #007bff;
+        }
 
-    .btn-categorize {
-      font-size: 1rem;
-      padding: 10px 20px;
-    }
-  </style>
+        .button-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .btn-categorize {
+            font-size: 1rem;
+            padding: 10px 20px;
+            background-color: #0078D4;
+            border-color: #0078D4;
+            color: #fff;
+        }
+
+        .btn-categorize:hover {
+            background-color: #005A9E;
+            border-color: #005A9E;
+        }
+    </style>
 </head>
 
 <body>
-  <div class="container-fluid pt-3">
+<div class="container-fluid pt-3">
     <div class="header">
-      <h1>CategorEase</h1>
-      <img src="icons/categorease_logo.png" alt="CategorEase Logo">
+        <div class="header-content">
+            <h1>CategorEase</h1>
+            <img src="icons/categorease_logo.png" alt="CategorEase Logo">
+        </div>
     </div>
     <div class="button-container">
-      <button class="btn btn-primary btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions</button>
+        <button class="btn btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions
+        </button>
     </div>
-  </div>
-  <script>
+    <div class="progress-container" style="display: none; margin: 20px;">
+        <div class="progress" style="height: 20px;">
+            <div class="progress-bar" role="progressbar" style="width: 0%; transition: width 0.3s ease-in-out;"
+                 aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="progress-text text-center mt-2">Processing transactions: <span class="progress-count">0</span>/<span
+                class="progress-total">0</span></div>
+    </div>
+
+
+</div>
+<script>
     // Initialize Office.js
-    Office.onReady(function (info) { });
+    Office.onReady(function (info) {
+    });
 
     // This is required for authentication and must not be deleted
     globalThis.getAuth = async function () {
-      return ""
+        return ""
     };
 
     // Add click event listeners to buttons on task pane
@@ -71,21 +98,59 @@
 
     // Sample 3: How to use alerts
     function categorizeTransactionsPrompt() {
-      xlwings.runPython(window.location.origin + "/categorize-transactions-prompt");
+        xlwings.runPython(window.location.origin + "/categorize-transactions-prompt");
     }
+
     // This function gets called when the user clicks a button in the alert shown
     // by capitalizeSheetNamesPrompt. Use this function name as the callback parameter
     // in Python: book.app.alert(callback="capitalizeSheetNames")
     function categorizeTransactions(arg) {
-      if (arg == "ok") {
-        xlwings.runPython(window.location.origin + "/categorize-transactions");
-      } else {
-        // cancel
-      }
+        if (arg == "ok") {
+            xlwings.runPython(window.location.origin + "/categorize-transactions");
+        } else {
+            // cancel
+        }
     }
-    // Make sure to register the callback function
+
+    function initializeProgress(total) {
+        console.log('Initializing progress with total:', total);
+        const progressContainer = document.querySelector('.progress-container');
+        const progressBar = document.querySelector('.progress-bar');
+        const progressCount = document.querySelector('.progress-count');
+        const progressTotal = document.querySelector('.progress-total');
+
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.setAttribute('aria-valuenow', 0);
+        progressCount.textContent = '0';
+        progressTotal.textContent = total;
+    }
+
+
+    function incrementProgress() {
+        const progressBar = document.querySelector('.progress-bar');
+        const progressCount = document.querySelector('.progress-count');
+        const progressTotal = document.querySelector('.progress-total');
+
+        const currentCount = parseInt(progressCount.textContent) + 1;
+        const total = parseInt(progressTotal.textContent);
+        const percentage = (currentCount / total) * 100;
+
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+        progressCount.textContent = currentCount;
+    }
+
+    function resetProgress() {
+        const progressContainer = document.querySelector('.progress-container');
+        progressContainer.style.display = 'none';
+    }
+
     xlwings.registerCallback(categorizeTransactions);
-  </script>
+    xlwings.registerCallback(initializeProgress);
+    xlwings.registerCallback(incrementProgress);
+    xlwings.registerCallback(resetProgress);
+</script>
 </body>
 
 </html>

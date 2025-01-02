@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
-from xlwings import Book
+from xlwings import Book, App
 import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
 from app.models import Transaction, Category, CategorizedTransaction
@@ -14,25 +14,46 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 
 
 def categorize_transactions_in_book(book: Book) -> Book:
-    previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
+    previously_categorized_transactions, uncategorized_transactions = (
+        retrieve_transactions(book)
+    )
     categories = retrieve_categories(book)
 
-    categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = parallel_invoke_function(
-        function=model_categorize_transaction,
-        variable_args=uncategorized_transactions,
-        categories=categories,
-        categorized_transactions=previously_categorized_transactions,
-    )
+    # book.app.alert("Initializing...", callback=f"initializeProgress({len(uncategorized_transactions)})")
+    initialize_progress_bar_func = book.app.macro("initializeProgress")
+    initialize_progress_bar_func(len(uncategorized_transactions))
+    print(book.app.status_bar)
+    book.app.status_bar = 5
+    with book.app.properties(status_bar='Calculating...'):
+        print("testing")
 
-    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
-    print(f"Total cost: ${total_cost:.4f}")
+    # categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
+    #     parallel_invoke_function(
+    #         function=model_categorize_transaction,
+    #         variable_args=uncategorized_transactions,
+    #         categories=categories,
+    #         categorized_transactions=previously_categorized_transactions,
+    #         book=book,
+    #     )
+    # )
+    # book.app.alert("Complete!", callback="resetProgress")
+    #
+    # total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    # print(f"Total cost: ${total_cost:.4f}")
+    #
+    # categorized_transactions = [
+    #     transaction for transaction, _ in categorized_transactions_and_costs
+    # ]
+    #
+    # return update_categories_in_sheet(book, categorized_transactions)
 
-    categorized_transactions = [transaction for transaction, _ in categorized_transactions_and_costs]
 
-    return update_categories_in_sheet(book, categorized_transactions)
-
-
-def model_categorize_transaction(transaction, categories, categorized_transactions) -> Tuple[CategorizedTransaction, float]:
+def model_categorize_transaction(
+    transaction: Transaction,
+    categories: List[Category],
+    categorized_transactions: List[Category],
+    book: Book,
+) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
 
     analysis_response, analysis_cost = model_analyze_transaction(
@@ -50,6 +71,7 @@ def model_categorize_transaction(transaction, categories, categorized_transactio
         ModelName.HAIKU_3_5,
     )
 
+    book.app.alert("Processing...", callback="incrementProgress")
     total_cost = analysis_cost + parsing_cost
 
     return parsed_category, total_cost
@@ -270,7 +292,10 @@ def update_categories_in_sheet(
     for transaction in categorized_transactions:
         for i, row in enumerate(rows):
             if row[transaction_id_col - 1].value == transaction.transaction_id:
-                if not row[category_col - 1].value and transaction.category != "Unknown":
+                if (
+                    not row[category_col - 1].value
+                    and transaction.category != "Unknown"
+                ):
                     sheet.cells(i + 2, category_col).value = transaction.category
                 break
 
