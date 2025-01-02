@@ -1,5 +1,6 @@
 from typing import List, Tuple
 
+from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
@@ -13,46 +14,39 @@ from app.prompt_templates import analysis_template, serialize_categories_templat
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 
 
-def categorize_transactions_in_book(book: Book) -> Book:
+def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
         retrieve_transactions(book)
     )
     categories = retrieve_categories(book)
+    socketio.emit('initializeProgressBar', {'value': len(uncategorized_transactions)})
 
-    # book.app.alert("Initializing...", callback=f"initializeProgress({len(uncategorized_transactions)})")
-    initialize_progress_bar_func = book.app.macro("initializeProgress")
-    initialize_progress_bar_func(len(uncategorized_transactions))
-    print(book.app.status_bar)
-    book.app.status_bar = 5
-    with book.app.properties(status_bar='Calculating...'):
-        print("testing")
+    categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
+        parallel_invoke_function(
+            function=model_categorize_transaction,
+            variable_args=uncategorized_transactions,
+            categories=categories,
+            categorized_transactions=previously_categorized_transactions,
+            socketio=socketio,
+        )
+    )
 
-    # categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
-    #     parallel_invoke_function(
-    #         function=model_categorize_transaction,
-    #         variable_args=uncategorized_transactions,
-    #         categories=categories,
-    #         categorized_transactions=previously_categorized_transactions,
-    #         book=book,
-    #     )
-    # )
-    # book.app.alert("Complete!", callback="resetProgress")
-    #
-    # total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
-    # print(f"Total cost: ${total_cost:.4f}")
-    #
-    # categorized_transactions = [
-    #     transaction for transaction, _ in categorized_transactions_and_costs
-    # ]
-    #
-    # return update_categories_in_sheet(book, categorized_transactions)
+    socketio.emit('clearProgressBar')
+    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    print(f"Total cost: ${total_cost:.4f}")
+
+    categorized_transactions = [
+        transaction for transaction, _ in categorized_transactions_and_costs
+    ]
+
+    return update_categories_in_sheet(book, categorized_transactions)
 
 
 def model_categorize_transaction(
     transaction: Transaction,
     categories: List[Category],
     categorized_transactions: List[Category],
-    book: Book,
+    socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
 
@@ -70,8 +64,8 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
+    socketio.emit('updateProgressBar')
 
-    book.app.alert("Processing...", callback="incrementProgress")
     total_cost = analysis_cost + parsing_cost
 
     return parsed_category, total_cost

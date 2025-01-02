@@ -13,6 +13,7 @@
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js" integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ==" crossorigin="anonymous"></script>
     <style>
         .header {
             display: flex;
@@ -112,8 +113,14 @@
         }
     }
 
-    function initializeProgress(total) {
-        console.log('Initializing progress with total:', total);
+    const socket = io("https://localhost:8000/");
+
+    socket.on("connect", () => {
+        console.log("Connected to Flask WebSocket server");
+    });
+
+    socket.on("initializeProgressBar", (data) => {
+        console.log('Initializing progress with total:', data.value);
         const progressContainer = document.querySelector('.progress-container');
         const progressBar = document.querySelector('.progress-bar');
         const progressCount = document.querySelector('.progress-count');
@@ -123,11 +130,10 @@
         progressBar.style.width = '0%';
         progressBar.setAttribute('aria-valuenow', 0);
         progressCount.textContent = '0';
-        progressTotal.textContent = total;
-    }
+        progressTotal.textContent = data.value;
+    });
 
-
-    function incrementProgress() {
+    socket.on("updateProgressBar", () => {
         const progressBar = document.querySelector('.progress-bar');
         const progressCount = document.querySelector('.progress-count');
         const progressTotal = document.querySelector('.progress-total');
@@ -139,17 +145,14 @@
         progressBar.style.width = percentage + '%';
         progressBar.setAttribute('aria-valuenow', percentage);
         progressCount.textContent = currentCount;
-    }
+    });
 
-    function resetProgress() {
+    socket.on("clearProgressBar", () => {
         const progressContainer = document.querySelector('.progress-container');
         progressContainer.style.display = 'none';
-    }
+    });
 
     xlwings.registerCallback(categorizeTransactions);
-    xlwings.registerCallback(initializeProgress);
-    xlwings.registerCallback(incrementProgress);
-    xlwings.registerCallback(resetProgress);
 </script>
 </body>
 
