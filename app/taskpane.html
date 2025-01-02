@@ -13,11 +13,49 @@
   <link rel="stylesheet"
     href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
     integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
+  <style>
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .header img {
+      height: 40px;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      margin: 0;
+      font-weight: bold;
+      color: #007bff;
+    }
+
+    .button-container {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .btn-categorize {
+      font-size: 1rem;
+      padding: 10px 20px;
+    }
+  </style>
 </head>
 
 <body>
   <div class="container-fluid pt-3">
-    <button class="btn btn-primary btn-sm" id="btn-capitalize-sheet-names" type="button">Run</button>
+    <div class="header">
+      <h1>CategorEase</h1>
+      <img src="icons/categorease_logo.png" alt="CategorEase Logo">
+    </div>
+    <div class="button-container">
+      <button class="btn btn-primary btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions</button>
+    </div>
   </div>
   <script>
     // Initialize Office.js
@@ -29,7 +67,7 @@
     };
 
     // Add click event listeners to buttons on task pane
-    document.getElementById("btn-capitalize-sheet-names").addEventListener("click", categorizeTransactionsPrompt);
+    document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
 
     // Sample 3: How to use alerts
     function categorizeTransactionsPrompt() {

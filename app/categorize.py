@@ -270,7 +270,7 @@ def update_categories_in_sheet(
     for transaction in categorized_transactions:
         for i, row in enumerate(rows):
             if row[transaction_id_col - 1].value == transaction.transaction_id:
-                if not row[category_col - 1].value:
+                if not row[category_col - 1].value and transaction.category != "Unknown":
                     sheet.cells(i + 2, category_col).value = transaction.category
                 break
 
