@@ -9,8 +9,8 @@ from toolkit.language_models.token_costs import calculate_total_prompt_cost, Mod
 from xlwings import Book, App
 import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
-from app.models import Transaction, Category, CategorizedTransaction
-from app.prompt_templates import analysis_template, serialize_categories_template
+from models import Transaction, Category, CategorizedTransaction
+from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 
 

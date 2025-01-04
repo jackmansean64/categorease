@@ -8,7 +8,7 @@ from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from app.categorize import categorize_transactions_in_book, retrieve_transactions
+from categorize import categorize_transactions_in_book, retrieve_transactions
 
 app = Flask(__name__)
 CORS(app)
