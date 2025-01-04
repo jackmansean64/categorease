@@ -6,6 +6,7 @@ import xlwings as xw
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
+from flask_socketio import SocketIO
 
 from app.categorize import categorize_transactions_in_book, retrieve_transactions
 
@@ -13,7 +14,7 @@ app = Flask(__name__)
 CORS(app)
 
 this_dir = Path(__file__).resolve().parent
-
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 @app.route("/")
 def root():
@@ -54,7 +55,7 @@ def categorize_transactions_prompt():
 @app.route("/categorize-transactions", methods=["POST"])
 def categorize_transactions():
     with xw.Book(json=request.json) as book:
-        book = categorize_transactions_in_book(book)
+        book = categorize_transactions_in_book(book, socketio)
         return book.json()
 
 
@@ -102,9 +103,10 @@ def xlwings_exception_handler(error):
 
 
 if __name__ == "__main__":
-    app.run(
+    socketio.run(
+        app,
+        allow_unsafe_werkzeug=True,
         port=8000,
-        debug=True,
         ssl_context=(
             this_dir.parent / "certs" / "localhost+2.pem",
             this_dir.parent / "certs" / "localhost+2-key.pem",
