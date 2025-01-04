@@ -6,9 +6,9 @@ pandas==2.2.3
 Werkzeug==2.2.2
 xlwings==0.33.3
 pydantic
-toolkit
 langchain
 langchain_openai
 langchain_aws
 python-dotenv
 black
+git+https://github.com/marking-helper/toolkit.git
