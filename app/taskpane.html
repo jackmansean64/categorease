@@ -5,9 +5,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CategorEase</title>
-    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+        <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<!--    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js"></script>-->
+<!--    <script type="text/javascript"-->
+<!--            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.33.3/xlwingsjs/dist/xlwings.js"></script>-->
     <script type="text/javascript"
-            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.30.12/xlwingsjs/dist/xlwings.min.js"></script>
+            src="xlwings.js"></script>
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
@@ -130,6 +133,10 @@
 <script>
     Office.onReady(function (info) {
     });
+    // Office.onReady(() => {
+    //     OfficeExtension.config.extendedErrorLogging = true;
+    //     // Other code...
+    // });
 
     globalThis.getAuth = async function () {
         return ""
