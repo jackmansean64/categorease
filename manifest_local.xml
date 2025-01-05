@@ -3,11 +3,11 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
-  <Id>622db60b-5e21-4c2f-b90a-bdbc18d705e6</Id>
+  <Id>ba5dece2-4069-4235-a617-834a91fe7cf4</Id>
   <Version>1.0.0</Version>
   <ProviderName>Sean Jackman</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="CategorEase" />
+  <DisplayName DefaultValue="CategorEase (local)" />
   <Description DefaultValue="This is the CategorEase app" />
   <IconUrl DefaultValue="https://127.0.0.1:8000/icons/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://127.0.0.1:8000/icons/icon-64.png" />
