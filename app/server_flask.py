@@ -107,8 +107,8 @@ if __name__ == "__main__":
         app,
         allow_unsafe_werkzeug=True,
         port=8000,
-        ssl_context=(
-            this_dir.parent / "certs" / "localhost+2.pem",
-            this_dir.parent / "certs" / "localhost+2-key.pem",
-        ),
+        # ssl_context=(
+        #     this_dir.parent / "certs" / "localhost+2.pem",
+        #     this_dir.parent / "certs" / "localhost+2-key.pem",
+        # ),
     )
