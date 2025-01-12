@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 
 from flask_socketio import SocketIO
@@ -21,6 +22,7 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     categories = retrieve_categories(book)
     socketio.emit('initializeProgressBar', {'value': len(uncategorized_transactions)})
 
+    logging.log(logging.INFO, "Progress bar initialized, beginning categorization" )
     categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
         parallel_invoke_function(
             function=model_categorize_transaction,
@@ -50,6 +52,7 @@ def model_categorize_transaction(
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
 
+    logging.log(logging.INFO, "Inside model_categorize_transaction")
     analysis_response, analysis_cost = model_analyze_transaction(
         transaction,
         categories,
@@ -57,6 +60,7 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
+    logging.log(logging.INFO, "First prompt complete")
 
     parsed_category, parsing_cost = model_parse_category_from_analysis(
         transaction,
@@ -64,6 +68,7 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
+    logging.log(logging.INFO, "Second prompt complete")
     socketio.emit('updateProgressBar')
 
     total_cost = analysis_cost + parsing_cost
