@@ -14,7 +14,7 @@ app = Flask(__name__)
 CORS(app)
 
 this_dir = Path(__file__).resolve().parent
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 @app.route("/")
 def root():
