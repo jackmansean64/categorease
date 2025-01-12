@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import jinja2
@@ -15,6 +16,16 @@ CORS(app)
 
 this_dir = Path(__file__).resolve().parent
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+logging.basicConfig(
+    filename="flask_app.log",
+    encoding="utf-8",
+    filemode="a",
+    format="{asctime} - {levelname} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M",
+)
+logging.getLogger().addHandler(logging.StreamHandler())
 
 @app.route("/")
 def root():
@@ -100,7 +111,6 @@ def static_proxy(path):
 def xlwings_exception_handler(error):
     # This handles all exceptions, so you may want to make this more restrictive
     return Response(str(error), status=500)
-
 
 if __name__ == "__main__":
     socketio.run(
