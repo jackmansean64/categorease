@@ -4,6 +4,7 @@ from pathlib import Path
 import jinja2
 import markupsafe
 import xlwings as xw
+from dotenv import load_dotenv
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
@@ -19,6 +20,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 logging.basicConfig(
     filename="flask_app.log",
+    level=logging.INFO,
     encoding="utf-8",
     filemode="a",
     format="{asctime} - {levelname} - {message}",
@@ -26,6 +28,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M",
 )
 logging.getLogger().addHandler(logging.StreamHandler())
+
+load_dotenv()
 
 @app.route("/")
 def root():
@@ -115,11 +119,9 @@ def xlwings_exception_handler(error):
 if __name__ == "__main__":
     socketio.run(
         app,
-        # allow_unsafe_werkzeug=True,
+        certfile=str(this_dir.parent / "certs" / "localhost+2.pem"),
+        keyfile=str(this_dir.parent / "certs" / "localhost+2-key.pem"),
         host="0.0.0.0",
         port=8000,
-        # ssl_context=(
-        #     this_dir.parent / "certs" / "localhost+2.pem",
-        #     this_dir.parent / "certs" / "localhost+2-key.pem",
-        # ),
+        allow_unsafe_werkzeug=True,
     )
