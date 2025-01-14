@@ -147,8 +147,8 @@ def xlwings_exception_handler(error):
 if __name__ == "__main__":
     socketio.run(
         app,
-        certfile=str(this_dir.parent / "certs" / "localhost+2.pem"),
-        keyfile=str(this_dir.parent / "certs" / "localhost+2-key.pem"),
+        # certfile=str(this_dir.parent / "certs" / "localhost+2.pem"),
+        # keyfile=str(this_dir.parent / "certs" / "localhost+2-key.pem"),
         host="0.0.0.0",
         port=8000,
         allow_unsafe_werkzeug=True,
