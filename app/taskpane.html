@@ -5,18 +5,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CategorEase</title>
-        <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-<!--    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js"></script>-->
-<!--    <script type="text/javascript"-->
-<!--            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.33.3/xlwingsjs/dist/xlwings.js"></script>-->
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <!--    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js"></script>-->
+    <!--    <script type="text/javascript"-->
+    <!--            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.33.3/xlwingsjs/dist/xlwings.js"></script>-->
     <script type="text/javascript"
             src="xlwings.js"></script>
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"
-            integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ=="
-            crossorigin="anonymous"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         .header {
             display: flex;
@@ -145,6 +143,7 @@
     document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
 
     function categorizeTransactionsPrompt() {
+        socket.emit('test_connection');
         xlwings.runPython(window.location.origin + "/categorize-transactions-prompt");
     }
 
@@ -156,7 +155,7 @@
         }
     }
 
-    const socket = io("https://localhost:8000/");
+    const socket = io("https://localhost:8000");
     //const socket = io("https://api.categorease.ca");
 
     socket.on("connect", () => {

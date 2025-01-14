@@ -1,6 +1,4 @@
-import logging
 from typing import List, Tuple
-
 from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -20,7 +18,7 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
         retrieve_transactions(book)
     )
     categories = retrieve_categories(book)
-    socketio.emit('initializeProgressBar', {'value': len(uncategorized_transactions)})
+    socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
 
     categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
         parallel_invoke_function(
@@ -32,7 +30,7 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
         )
     )
 
-    socketio.emit('clearProgressBar')
+    socketio.emit("clearProgressBar")
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
     print(f"Total cost: ${total_cost:.4f}")
 
@@ -65,7 +63,7 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
-    socketio.emit('updateProgressBar')
+    socketio.emit("updateProgressBar")
 
     total_cost = analysis_cost + parsing_cost
 

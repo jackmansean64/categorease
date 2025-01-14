@@ -1,6 +1,9 @@
+import eventlet
+
+eventlet.monkey_patch()
+
 import logging
 from pathlib import Path
-
 import jinja2
 import markupsafe
 import xlwings as xw
@@ -9,14 +12,21 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-
 from categorize import categorize_transactions_in_book, retrieve_transactions
+
 
 app = Flask(__name__)
 CORS(app)
 
 this_dir = Path(__file__).resolve().parent
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="eventlet",
+    # logger=True,
+    # engineio_logger=True
+)
 
 logging.basicConfig(
     filename="flask_app.log",
@@ -30,6 +40,23 @@ logging.basicConfig(
 logging.getLogger().addHandler(logging.StreamHandler())
 
 load_dotenv()
+
+
+@socketio.on("connect")
+def handle_connect():
+    logging.info("Client connected")
+
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    logging.info("Client disconnected")
+
+
+@socketio.on("test_connection")
+def handle_test_connection():
+    logging.info("Test connection received")
+    socketio.emit("test_response", {"message": "Test successful"})
+
 
 @app.route("/")
 def root():
@@ -115,6 +142,7 @@ def static_proxy(path):
 def xlwings_exception_handler(error):
     # This handles all exceptions, so you may want to make this more restrictive
     return Response(str(error), status=500)
+
 
 if __name__ == "__main__":
     socketio.run(
