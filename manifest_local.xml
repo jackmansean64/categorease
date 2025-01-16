@@ -87,7 +87,7 @@
       <bt:ShortStrings>
         <!-- Uncomment the next line to use a global Namespace. It can also be set per function via xw.func(namespace="...") -->
         <!-- <bt:String id="Functions.Namespace" DefaultValue="XLWINGS"/> -->
-        <bt:String id="MyTab.TabLabel" DefaultValue="CategorEase" />
+        <bt:String id="MyTab.TabLabel" DefaultValue="CategorEase (Local)" />
         <bt:String id="MyCommandsGroup.Label" DefaultValue="MyGroup" />
         <bt:String id="MyTaskpaneButton.Label" DefaultValue="Show Taskpane" />
       </bt:ShortStrings>

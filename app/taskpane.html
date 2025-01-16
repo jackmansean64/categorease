@@ -144,14 +144,20 @@
 
     function categorizeTransactionsPrompt() {
         socket.emit('test_connection');
-        xlwings.runPython(window.location.origin + "/categorize-transactions-prompt");
+        xlwings.runPython(
+            window.location.origin + "/categorize-transactions-prompt",
+            {include: "Transactions, Categories"}
+        );
     }
 
     function categorizeTransactions(arg) {
         if (arg === "ok") {
             document.querySelector('.progress-container').style.display = 'block';
             document.getElementById('btn-categorize-transactions').style.display = 'none';
-            xlwings.runPython(window.location.origin + "/categorize-transactions");
+            xlwings.runPython(
+                window.location.origin + "/categorize-transactions",
+                {include: "Transactions, Categories"}
+            );
         }
     }
 
