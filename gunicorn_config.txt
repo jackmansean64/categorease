@@ -1,0 +1,15 @@
+[Unit]
+Description=Gunicorn instance for flask app
+After=network.target
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/flask-app/categorease/app
+ExecStart=/home/ubuntu/flask-app/venv/bin/gunicorn \
+          --bind 0.0.0.0:8000 \
+          --worker-class eventlet \
+          -w 1 \
+          server_flask:app
+Restart=always
+[Install]
+WantedBy=multi-user.target
