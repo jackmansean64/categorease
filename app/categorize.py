@@ -240,8 +240,9 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
             transaction = Transaction(**row.to_dict())
             transactions.append(transaction)
         except Exception as e:
+            excel_row_num = index + 2
             raise ValueError(
-                f"Row {index} failed validation: {str(e)}\nData: {row.to_dict()}"
+                f"Excel row {excel_row_num} failed validation: {str(e)}\nData: {row.to_dict()}"
             )
 
     return transactions
