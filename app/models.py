@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
+
 
 class Transaction(BaseModel):
     date: datetime = Field(alias="Date")
@@ -20,6 +21,27 @@ class Transaction(BaseModel):
     check_number: Optional[str] = Field(alias="Check Number", default=None)
     full_description: Optional[str] = Field(alias="Full Description", default=None)
     date_added: Optional[datetime] = Field(alias="Date Added", default=None)
+
+    # noinspection PyNestedDecorators
+    @field_validator(
+        "description",
+        "category",
+        "labels",
+        "notes",
+        "account",
+        "account_number",
+        "institution",
+        "transaction_id",
+        "account_id",
+        "check_number",
+        "full_description",
+        mode="before"
+    )
+    @classmethod
+    def coerce_to_string(cls, value):
+        if value is None:
+            return value
+        return str(value)
 
 
 class Category(BaseModel):
