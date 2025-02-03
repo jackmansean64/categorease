@@ -233,6 +233,8 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     ]
     for col in columns_to_clean:
         df[col] = df[col].where(pd.notna(df[col]), None)
+        # convert timestamp objects to string (if any)
+        df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if isinstance(x, pd.Timestamp) else x)
 
     transactions = []
     for index, row in df.iterrows():
