@@ -13,7 +13,7 @@ from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from categorize import categorize_transactions_in_book, retrieve_transactions
-
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -24,7 +24,7 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode="eventlet",
-    # logger=True,
+    logger=True,
     # engineio_logger=True
 )
 
@@ -141,15 +141,24 @@ def static_proxy(path):
 @app.errorhandler(Exception)
 def xlwings_exception_handler(error):
     # This handles all exceptions, so you may want to make this more restrictive
-    return Response(str(error), status=500)
+     return Response(str(error), status=500)
 
 
 if __name__ == "__main__":
-    socketio.run(
-        app,
-        # certfile=str(this_dir.parent / "certs" / "localhost+2.pem"),
-        # keyfile=str(this_dir.parent / "certs" / "localhost+2-key.pem"),
-        host="0.0.0.0",
-        port=8000,
-        allow_unsafe_werkzeug=True,
-    )
+    run_kwargs = {
+        'host': "0.0.0.0",
+        'port': 8000,
+        'allow_unsafe_werkzeug': True
+    }
+
+    use_local_certs = os.getenv("USE_LOCAL_CERTS") == "True"
+    if use_local_certs:
+        run_kwargs.update(
+            {
+                'certfile': str(this_dir.parent / "certs" / "localhost+2.pem"),
+                'keyfile': str(this_dir.parent / "certs" / "localhost+2-key.pem"),
+            }
+        )
+
+    socketio.run(app, **run_kwargs)
+

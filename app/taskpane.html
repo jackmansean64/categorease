@@ -161,8 +161,11 @@
         }
     }
 
-    //const socket = io("https://localhost:8000");
-    const socket = io("https://api.categorease.ca");
+    const SOCKET_URL = window.location.hostname === 'localhost'
+    ? "https://localhost:8000"
+    : "https://api.categorease.ca";
+
+    const socket = io(SOCKET_URL);
 
     socket.on("connect", () => {
         console.log("Connected to Flask WebSocket server");
