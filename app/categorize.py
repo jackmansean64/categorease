@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
@@ -77,7 +78,7 @@ def model_analyze_transaction(
     chat_model: BaseChatModel,
     model_name: ModelName,
 ) -> Tuple[str, float]:
-    TRANSACTION_HISTORY_LENGTH = 100
+    TRANSACTION_HISTORY_LENGTH = 150
     prompt_template = PromptTemplate.from_template(analysis_template)
 
     formatted_prompt = prompt_template.format(
@@ -91,11 +92,22 @@ def model_analyze_transaction(
 
     analysis_response = chat_model.invoke(formatted_prompt)
 
+    if "input_tokens" in analysis_response.response_metadata["usage"]:
+        prompt_tokens = analysis_response.response_metadata["usage"]["input_tokens"]
+        completion_tokens = analysis_response.response_metadata["usage"]["output_tokens"]
+    elif "prompt_tokens" in analysis_response.response_metadata["usage"]:
+        prompt_tokens = analysis_response.response_metadata["usage"]["prompt_tokens"]
+        completion_tokens = analysis_response.response_metadata["usage"]["completion_tokens"]
+    else:
+        prompt_tokens = 0
+        completion_tokens = 0
+
     total_cost = calculate_total_prompt_cost(
-        analysis_response.response_metadata["usage"]["prompt_tokens"],
-        analysis_response.response_metadata["usage"]["completion_tokens"],
+        prompt_tokens,
+        completion_tokens,
         model_name,
     )
+
     # print(f"Total Cost: ${total_cost}")
 
     return analysis_response.content, total_cost
@@ -127,9 +139,19 @@ def model_parse_category_from_analysis(
     )
     # print(assigned_category)
 
+    if "input_tokens" in category_assignment_response.response_metadata["usage"]:
+        prompt_tokens = category_assignment_response.response_metadata["usage"]["input_tokens"]
+        completion_tokens = category_assignment_response.response_metadata["usage"]["output_tokens"]
+    elif "prompt_tokens" in category_assignment_response.response_metadata["usage"]:
+        prompt_tokens = category_assignment_response.response_metadata["usage"]["prompt_tokens"]
+        completion_tokens = category_assignment_response.response_metadata["usage"]["completion_tokens"]
+    else:
+        prompt_tokens = 0
+        completion_tokens = 0
+
     total_cost = calculate_total_prompt_cost(
-        category_assignment_response.response_metadata["usage"]["prompt_tokens"],
-        category_assignment_response.response_metadata["usage"]["completion_tokens"],
+        prompt_tokens,
+        completion_tokens,
         model_name,
     )
     # print(f"Total Cost: ${total_cost}")
