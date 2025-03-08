@@ -58,7 +58,7 @@ def model_categorize_transaction(
         ModelName.HAIKU_3_5,
     )
 
-    time.sleep(0.25)  # To avoid rate limiting on LLM invocations
+    time.sleep(5)  # To avoid rate limiting on LLM invocations
 
     parsed_category, parsing_cost = model_parse_category_from_analysis(
         transaction,
