@@ -21,15 +21,20 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     categories = retrieve_categories(book)
     socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
 
-    categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
-        parallel_invoke_function(
-            function=model_categorize_transaction,
-            variable_args=uncategorized_transactions,
-            categories=categories,
-            categorized_transactions=previously_categorized_transactions,
-            socketio=socketio,
+    try:
+        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
+            parallel_invoke_function(
+                function=model_categorize_transaction,
+                variable_args=uncategorized_transactions,
+                categories=categories,
+                categorized_transactions=previously_categorized_transactions,
+                socketio=socketio,
+            )
         )
-    )
+    except Exception as e:
+        logging.error(e)
+        socketio.emit("error", {"error": str(e)})
+        raise e
 
     socketio.emit("clearProgressBar")
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
