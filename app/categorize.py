@@ -11,7 +11,6 @@ from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
-import time
 
 
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
@@ -54,16 +53,14 @@ def model_categorize_transaction(
         transaction,
         categories,
         categorized_transactions,
-        chat_models.claude_35_haiku_chat,
+        chat_models.claude_35_haiku_chat_anthropic,
         ModelName.HAIKU_3_5,
     )
-
-    time.sleep(5)  # To avoid rate limiting on LLM invocations
 
     parsed_category, parsing_cost = model_parse_category_from_analysis(
         transaction,
         analysis_response,
-        chat_models.claude_35_haiku_chat,
+        chat_models.claude_35_haiku_chat_anthropic,
         ModelName.HAIKU_3_5,
     )
     socketio.emit("updateProgressBar")
@@ -80,7 +77,7 @@ def model_analyze_transaction(
     chat_model: BaseChatModel,
     model_name: ModelName,
 ) -> Tuple[str, float]:
-    TRANSACTION_HISTORY_LENGTH = 200
+    TRANSACTION_HISTORY_LENGTH = 100
     prompt_template = PromptTemplate.from_template(analysis_template)
 
     formatted_prompt = prompt_template.format(

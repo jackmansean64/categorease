@@ -10,6 +10,7 @@ pydantic
 langchain
 langchain_openai
 langchain_aws
+langchain_anthropic
 python-dotenv
 black
 eventlet
