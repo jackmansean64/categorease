@@ -11,6 +11,7 @@ from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
+import time
 
 
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
@@ -44,7 +45,7 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
 def model_categorize_transaction(
     transaction: Transaction,
     categories: List[Category],
-    categorized_transactions: List[Category],
+    categorized_transactions: List[Transaction],
     socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
@@ -56,6 +57,8 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
+
+    time.sleep(0.25)  # To avoid rate limiting on LLM invocations
 
     parsed_category, parsing_cost = model_parse_category_from_analysis(
         transaction,
@@ -106,7 +109,7 @@ def model_parse_category_from_analysis(
     analysis_response: str,
     chat_model: BaseChatModel,
     model_name: ModelName,
-) -> Tuple[Category, float]:
+) -> Tuple[CategorizedTransaction, float]:
     serialization_prompt_template = PromptTemplate.from_template(
         serialize_categories_template
     )
@@ -122,7 +125,7 @@ def model_parse_category_from_analysis(
     ]
 
     category_assignment_response = chat_model.invoke(prompt)
-    assigned_category = CategorizedTransaction.model_validate_json(
+    categorized_transaction = CategorizedTransaction.model_validate_json(
         category_assignment_response.content
     )
     # print(assigned_category)
@@ -134,7 +137,7 @@ def model_parse_category_from_analysis(
     )
     # print(f"Total Cost: ${total_cost}")
 
-    return assigned_category, total_cost
+    return categorized_transaction, total_cost
 
 
 def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transaction]]:
