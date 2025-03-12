@@ -1,4 +1,3 @@
-import logging
 from typing import List, Tuple
 from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
@@ -6,13 +5,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
-from xlwings import Book, App
+from xlwings import Book
 import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
-
+import logging
 
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
@@ -54,19 +53,18 @@ def model_categorize_transaction(
     socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
-
     analysis_response, analysis_cost = model_analyze_transaction(
         transaction,
         categories,
         categorized_transactions,
-        chat_models.claude_35_haiku_chat_anthropic,
+        chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
 
     parsed_category, parsing_cost = model_parse_category_from_analysis(
         transaction,
         analysis_response,
-        chat_models.claude_35_haiku_chat_anthropic,
+        chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
     socketio.emit("updateProgressBar")
@@ -97,22 +95,11 @@ def model_analyze_transaction(
 
     analysis_response = chat_model.invoke(formatted_prompt)
 
-    if "input_tokens" in analysis_response.response_metadata["usage"]:
-        prompt_tokens = analysis_response.response_metadata["usage"]["input_tokens"]
-        completion_tokens = analysis_response.response_metadata["usage"]["output_tokens"]
-    elif "prompt_tokens" in analysis_response.response_metadata["usage"]:
-        prompt_tokens = analysis_response.response_metadata["usage"]["prompt_tokens"]
-        completion_tokens = analysis_response.response_metadata["usage"]["completion_tokens"]
-    else:
-        prompt_tokens = 0
-        completion_tokens = 0
-
     total_cost = calculate_total_prompt_cost(
-        prompt_tokens,
-        completion_tokens,
+        analysis_response.response_metadata["usage"]["prompt_tokens"],
+        analysis_response.response_metadata["usage"]["completion_tokens"],
         model_name,
     )
-
     # print(f"Total Cost: ${total_cost}")
 
     return analysis_response.content, total_cost
@@ -144,19 +131,9 @@ def model_parse_category_from_analysis(
     )
     # print(assigned_category)
 
-    if "input_tokens" in category_assignment_response.response_metadata["usage"]:
-        prompt_tokens = category_assignment_response.response_metadata["usage"]["input_tokens"]
-        completion_tokens = category_assignment_response.response_metadata["usage"]["output_tokens"]
-    elif "prompt_tokens" in category_assignment_response.response_metadata["usage"]:
-        prompt_tokens = category_assignment_response.response_metadata["usage"]["prompt_tokens"]
-        completion_tokens = category_assignment_response.response_metadata["usage"]["completion_tokens"]
-    else:
-        prompt_tokens = 0
-        completion_tokens = 0
-
     total_cost = calculate_total_prompt_cost(
-        prompt_tokens,
-        completion_tokens,
+        category_assignment_response.response_metadata["usage"]["prompt_tokens"],
+        category_assignment_response.response_metadata["usage"]["completion_tokens"],
         model_name,
     )
     # print(f"Total Cost: ${total_cost}")
