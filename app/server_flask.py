@@ -12,7 +12,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import categorize_transactions_in_book, retrieve_transactions
+from categorize import categorize_transactions_in_book, retrieve_transactions, start_categorization_session, get_next_batch
 import os
 
 app = Flask(__name__)
@@ -97,8 +97,17 @@ def categorize_transactions_prompt():
 @app.route("/categorize-transactions", methods=["POST"])
 def categorize_transactions():
     with xw.Book(json=request.json) as book:
-        book = categorize_transactions_in_book(book, socketio)
-        return book.json()
+        session_id = start_categorization_session(book, socketio)
+        return {"session_id": session_id}
+
+
+@app.route("/get-next-batch/<session_id>", methods=["POST"])
+def get_categorization_batch(session_id):
+    with xw.Book(json=request.json) as book:
+        batch_result = get_next_batch(session_id, book, socketio)
+        if batch_result is None:
+            return {"completed": True}
+        return {"completed": False, "book_json": batch_result.json()}
 
 
 @app.route("/xlwings/alert")

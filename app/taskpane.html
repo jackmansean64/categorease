@@ -150,6 +150,8 @@
         );
     }
 
+    let currentSessionId = null;
+
     function categorizeTransactions(arg) {
         if (arg === "ok") {
             document.querySelector('.progress-container').style.display = 'block';
@@ -159,6 +161,15 @@
                 {include: "Transactions, Categories"}
             );
         }
+    }
+
+    function processNextBatch() {
+        if (!currentSessionId) return;
+        
+        xlwings.runPython(
+            window.location.origin + "/get-next-batch/" + currentSessionId,
+            {include: "Transactions, Categories"}
+        );
     }
 
     const SOCKET_URL = window.location.hostname === 'localhost'
@@ -203,6 +214,26 @@
         const progressContainer = document.querySelector('.progress-container');
         progressContainer.style.display = 'none';
         document.getElementById('btn-categorize-transactions').style.display = 'inline-flex';
+        currentSessionId = null;
+    });
+
+    socket.on("sessionStarted", (data) => {
+        currentSessionId = data.session_id;
+        console.log("Categorization session started:", currentSessionId);
+        // Start processing the first batch
+        processNextBatch();
+    });
+
+    socket.on("batchCompleted", (data) => {
+        console.log(`Batch completed: ${data.batch_size} transactions, ${data.remaining} remaining`);
+        if (data.remaining > 0) {
+            // Process next batch
+            setTimeout(processNextBatch, 100); // Small delay to allow UI update
+        } else {
+            // All done
+            console.log("All transactions categorized");
+            currentSessionId = null;
+        }
     });
 
     xlwings.registerCallback(categorizeTransactions);

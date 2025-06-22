@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
 from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -12,6 +12,123 @@ from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
+import uuid
+import time
+from dataclasses import dataclass
+
+
+@dataclass
+class CategorizationSession:
+    session_id: str
+    uncategorized_transactions: List[Transaction]
+    categorized_transactions: List[Transaction]
+    categories: List[Category]
+    processed_transaction_ids: set
+    batch_size: int = 10
+    created_at: float = 0.0
+
+    def __post_init__(self):
+        if self.created_at == 0.0:
+            self.created_at = time.time()
+
+
+# Global session storage (in production, use Redis or database)
+active_sessions: Dict[str, CategorizationSession] = {}
+
+
+def cleanup_old_sessions():
+    """Remove sessions older than 1 hour"""
+    current_time = time.time()
+    expired_sessions = [
+        session_id for session_id, session in active_sessions.items()
+        if current_time - session.created_at > 3600  # 1 hour
+    ]
+    for session_id in expired_sessions:
+        del active_sessions[session_id]
+
+
+def start_categorization_session(book: Book, socketio: SocketIO) -> str:
+    """Initialize a new categorization session and return session ID"""
+    cleanup_old_sessions()
+    
+    previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
+    categories = retrieve_categories(book)
+    
+    session_id = str(uuid.uuid4())
+    session = CategorizationSession(
+        session_id=session_id,
+        uncategorized_transactions=uncategorized_transactions,
+        categorized_transactions=previously_categorized_transactions,
+        categories=categories,
+        processed_transaction_ids=set()
+    )
+    
+    active_sessions[session_id] = session
+    
+    socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
+    socketio.emit("sessionStarted", {"session_id": session_id, "total_transactions": len(uncategorized_transactions)})
+    
+    return session_id
+
+
+def get_next_batch(session_id: str, book: Book, socketio: SocketIO) -> Optional[Book]:
+    """Process next batch of transactions for the given session"""
+    if session_id not in active_sessions:
+        socketio.emit("error", {"error": "Session not found or expired"})
+        return None
+    
+    session = active_sessions[session_id]
+    
+    # Get transactions that haven't been processed yet
+    remaining_transactions = [
+        t for t in session.uncategorized_transactions 
+        if t.transaction_id not in session.processed_transaction_ids
+    ]
+    
+    if not remaining_transactions:
+        socketio.emit("clearProgressBar")
+        del active_sessions[session_id]
+        return None
+    
+    # Process next batch
+    batch = remaining_transactions[:session.batch_size]
+    
+    try:
+        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
+            parallel_invoke_function(
+                function=model_categorize_transaction,
+                variable_args=batch,
+                categories=session.categories,
+                categorized_transactions=session.categorized_transactions,
+                socketio=socketio,
+            )
+        )
+    except Exception as e:
+        logging.error(e)
+        socketio.emit("error", {"error": str(e)})
+        del active_sessions[session_id]
+        raise e
+    
+    categorized_transactions = [
+        transaction for transaction, _ in categorized_transactions_and_costs
+    ]
+    
+    # Update session state
+    for transaction in batch:
+        session.processed_transaction_ids.add(transaction.transaction_id)
+    
+    # Update the book with this batch
+    updated_book = update_categories_in_sheet(book, categorized_transactions)
+    
+    # Emit batch completion event
+    batch_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    socketio.emit("batchCompleted", {
+        "batch_size": len(batch),
+        "batch_cost": batch_cost,
+        "remaining": len(remaining_transactions) - len(batch)
+    })
+    
+    return updated_book
 
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
