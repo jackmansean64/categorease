@@ -13,12 +13,12 @@ from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 
-def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
+def categorize_transactions_in_book(book: Book, socketio: SocketIO, client_id: str = "default") -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
         retrieve_transactions(book)
     )
     categories = retrieve_categories(book)
-    socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
+    socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)}, room=client_id)
 
     try:
         categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
@@ -28,14 +28,15 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
                 categories=categories,
                 categorized_transactions=previously_categorized_transactions,
                 socketio=socketio,
+                client_id=client_id,
             )
         )
     except Exception as e:
         logging.error(e)
-        socketio.emit("error", {"error": str(e)})
+        socketio.emit("error", {"error": str(e)}, room=client_id)
         raise e
 
-    socketio.emit("clearProgressBar")
+    socketio.emit("clearProgressBar", room=client_id)
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
     print(f"Total cost: ${total_cost:.4f}")
 
@@ -51,6 +52,7 @@ def model_categorize_transaction(
     categories: List[Category],
     categorized_transactions: List[Transaction],
     socketio: SocketIO,
+    client_id: str,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
     analysis_response, analysis_cost = model_analyze_transaction(
@@ -67,7 +69,7 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
-    socketio.emit("updateProgressBar")
+    socketio.emit("updateProgressBar", room=client_id)
 
     total_cost = analysis_cost + parsing_cost
 

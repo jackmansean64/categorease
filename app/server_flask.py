@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, join_room, leave_room, request as socketio_request
 from categorize import categorize_transactions_in_book, retrieve_transactions
 import os
 
@@ -44,18 +44,20 @@ load_dotenv()
 
 @socketio.on("connect")
 def handle_connect():
-    logging.info("Client connected")
+    logging.info(f"Client connected: {socketio_request.sid}")
+    join_room(socketio_request.sid)
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    logging.info("Client disconnected")
+    logging.info(f"Client disconnected: {socketio_request.sid}")
+    leave_room(socketio_request.sid)
 
 
 @socketio.on("test_connection")
 def handle_test_connection():
     logging.info("Test connection received")
-    socketio.emit("test_response", {"message": "Test successful"})
+    socketio.emit("test_response", {"message": "Test successful"}, room=socketio_request.sid)
 
 
 @app.route("/")
@@ -97,7 +99,8 @@ def categorize_transactions_prompt():
 @app.route("/categorize-transactions", methods=["POST"])
 def categorize_transactions():
     with xw.Book(json=request.json) as book:
-        book = categorize_transactions_in_book(book, socketio)
+        client_id = request.headers.get('X-Client-ID', 'default')
+        book = categorize_transactions_in_book(book, socketio, client_id)
         return book.json()
 
 
