@@ -288,8 +288,12 @@ def update_categories_in_sheet(
     rows = sheet.tables[0].data_body_range.rows
 
     for transaction in categorized_transactions:
+        if transaction.transaction_id is None:
+            print(f"No transaction ID present for {transaction.description}, category can't be assigned.")
+            continue
+            
         for i, row in enumerate(rows):
-            if row[transaction_id_col - 1].value == transaction.transaction_id:
+            if str(row[transaction_id_col - 1].value) == str(transaction.transaction_id):
                 if (
                     not row[category_col - 1].value
                     and transaction.category != "Unknown"
