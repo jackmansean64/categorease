@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CategorEase</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>CategorEase</h1>
+        <p>Transaction categorization service is running.</p>
+        <div id="status-container"></div>
+    </div>
+
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    
+    <!-- xlwings JavaScript API (provided by xlwings) -->
+    <script src="xlwings.js"></script>
+    
+    <!-- Custom batch categorization handler -->
+    <script src="static/batch_categorization.js"></script>
+</body>
+</html> 

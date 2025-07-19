@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -13,6 +13,7 @@ from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 
+
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
         retrieve_transactions(book)
@@ -21,14 +22,14 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
 
     try:
-        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
-            parallel_invoke_function(
-                function=model_categorize_transaction,
-                variable_args=uncategorized_transactions,
-                categories=categories,
-                categorized_transactions=previously_categorized_transactions,
-                socketio=socketio,
-            )
+        categorized_transactions_and_costs: List[
+            Tuple[CategorizedTransaction, float]
+        ] = parallel_invoke_function(
+            function=model_categorize_transaction,
+            variable_args=uncategorized_transactions,
+            categories=categories,
+            categorized_transactions=previously_categorized_transactions,
+            socketio=socketio,
         )
     except Exception as e:
         logging.error(e)
@@ -44,6 +45,92 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     ]
 
     return update_categories_in_sheet(book, categorized_transactions)
+
+
+def categorize_transaction_batch(
+    book: Book,
+    batch_size: int,
+    socketio: SocketIO,
+    from_transaction_state: bool = False,
+) -> Tuple[Book, List[CategorizedTransaction], bool]:
+    """
+    Categorize a batch of transactions and return the updated book.
+
+    Args:
+        book: The Excel workbook
+        batch_size: Number of transactions to process in this batch
+        socketio: SocketIO instance for progress updates
+        from_transaction_state: Whether to use the transaction state manager
+
+    Returns:
+        Tuple of (updated book, newly categorized transactions, has_more_transactions)
+    """
+    # Import here to avoid circular imports
+    from transaction_state import transaction_state
+
+    previously_categorized_transactions, all_uncategorized = retrieve_transactions(book)
+    categories = retrieve_categories(book)
+
+    # If using transaction state, filter out already processed transactions
+    if from_transaction_state:
+        uncategorized_transactions = transaction_state.get_uncategorized_transactions(
+            all_uncategorized
+        )
+    else:
+        # Reset state at the beginning of a new categorization job
+        transaction_state.reset()
+        uncategorized_transactions = all_uncategorized
+
+    # Determine if there are more transactions to process after this batch
+    has_more_transactions = len(uncategorized_transactions) > batch_size
+
+    # Process only up to batch_size transactions
+    batch = uncategorized_transactions[:batch_size]
+
+    if not batch:
+        return book, [], False
+
+    # Mark these transactions as in-progress
+    transaction_state.mark_transactions_in_progress(batch)
+
+    socketio.emit("initializeProgressBar", {"value": len(batch)})
+
+    try:
+        categorized_transactions_and_costs: List[
+            Tuple[CategorizedTransaction, float]
+        ] = parallel_invoke_function(
+            function=model_categorize_transaction,
+            variable_args=batch,
+            categories=categories,
+            categorized_transactions=previously_categorized_transactions,
+            socketio=socketio,
+        )
+    except Exception as e:
+        logging.error(e)
+        socketio.emit("error", {"error": str(e)})
+        raise e
+
+    socketio.emit("clearProgressBar")
+    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    print(f"Batch cost: ${total_cost:.4f}")
+
+    categorized_transactions = [
+        transaction for transaction, _ in categorized_transactions_and_costs
+    ]
+
+    # Add to transaction state
+    transaction_state.add_categorized_transactions(categorized_transactions)
+
+    # Update the Excel sheet with the newly categorized transactions
+    updated_book = update_categories_in_sheet(book, categorized_transactions)
+
+    return updated_book, categorized_transactions, has_more_transactions
+
+
+def get_all_categorized_transactions() -> List[CategorizedTransaction]:
+    from transaction_state import transaction_state
+
+    return transaction_state.get_all_categorized_transactions()
 
 
 def model_categorize_transaction(

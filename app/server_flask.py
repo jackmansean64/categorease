@@ -8,11 +8,15 @@ import jinja2
 import markupsafe
 import xlwings as xw
 from dotenv import load_dotenv
-from flask import Flask, Response, request, send_from_directory
+from flask import Flask, Response, request, send_from_directory, jsonify
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import categorize_transactions_in_book, retrieve_transactions
+from categorize import (
+    categorize_transactions_in_book,
+    categorize_transaction_batch,
+    retrieve_transactions,
+)
 import os
 
 app = Flask(__name__)
@@ -40,6 +44,9 @@ logging.basicConfig(
 logging.getLogger().addHandler(logging.StreamHandler())
 
 load_dotenv()
+
+# Default batch size for transaction processing
+DEFAULT_BATCH_SIZE = 10
 
 
 @socketio.on("connect")
@@ -85,20 +92,67 @@ def categorize_transactions_prompt():
         _, uncategorized_transactions = retrieve_transactions(book)
         num_uncategorized = len(uncategorized_transactions)
         book.app.alert(
-            prompt=f"This will categorize {num_uncategorized} uncategorized transactions.",
+            prompt=f"This will categorize {num_uncategorized} uncategorized transactions in batches.",
             title="Are you sure?",
             buttons="ok_cancel",
             # this is the JS function name that gets called when the user clicks a button
-            callback="categorizeTransactions",
+            callback="startBatchCategorization",
         )
         return book.json()
 
 
 @app.route("/categorize-transactions", methods=["POST"])
 def categorize_transactions():
+    """Legacy endpoint that processes all transactions in one go"""
     with xw.Book(json=request.json) as book:
         book = categorize_transactions_in_book(book, socketio)
         return book.json()
+
+
+@app.route("/categorize-transaction-batch", methods=["POST"])
+def categorize_batch():
+    """
+    Process a batch of transactions and return the results.
+
+    Query parameters:
+    - batch_size: Number of transactions to process (default: 10)
+    - from_state: Whether to use the transaction state (default: false)
+
+    Returns:
+    - updated workbook
+    - has_more: Whether there are more transactions to process
+    - batch_count: How many transactions were processed in this batch
+    """
+    batch_size = request.args.get("batch_size", DEFAULT_BATCH_SIZE, type=int)
+    from_state = request.args.get("from_state", "false").lower() == "true"
+
+    with xw.Book(json=request.json) as book:
+        try:
+            updated_book, categorized_batch, has_more = categorize_transaction_batch(
+                book, batch_size, socketio, from_state
+            )
+
+            response_data = {
+                "workbook": updated_book.json(),
+                "has_more": has_more,
+                "batch_count": len(categorized_batch),
+            }
+
+            # Return the response as JSON
+            return jsonify(response_data)
+        except Exception as e:
+            logging.error(f"Error processing batch: {str(e)}")
+            return (
+                jsonify(
+                    {
+                        "error": str(e),
+                        "workbook": book.json(),
+                        "has_more": False,
+                        "batch_count": 0,
+                    }
+                ),
+                500,
+            )
 
 
 @app.route("/xlwings/alert")
@@ -119,16 +173,15 @@ def alert():
     )
 
 
-# Add xlwings.html as additional source for templates so the /xlwings/alert endpoint
-# will find xlwings-alert.html. "mytemplates" can be a dummy if the app doesn't use
-# own templates
-loader = jinja2.ChoiceLoader(
-    [
-        jinja2.FileSystemLoader(str(this_dir / "mytemplates")),
-        jinja2.PackageLoader("xlwings", "html"),
-    ]
-)
-app.jinja_loader = loader
+# Add xlwings.html as additional source for templates
+# Setup Jinja2 template loader for xlwings templates
+# Use a proper initialization of jinja_loader
+my_loader = jinja2.FileSystemLoader(str(this_dir / "mytemplates"))
+xlwings_loader = jinja2.PackageLoader("xlwings", "html")
+
+# Register the template loaders during application initialization
+app.template_folder = str(this_dir / "mytemplates")
+app.jinja_env.loader = jinja2.ChoiceLoader([my_loader, xlwings_loader])
 
 
 # Serve static files (HTML and icons)
@@ -141,24 +194,19 @@ def static_proxy(path):
 @app.errorhandler(Exception)
 def xlwings_exception_handler(error):
     # This handles all exceptions, so you may want to make this more restrictive
-     return Response(str(error), status=500)
+    return Response(str(error), status=500)
 
 
 if __name__ == "__main__":
-    run_kwargs = {
-        'host': "0.0.0.0",
-        'port': 8000,
-        'allow_unsafe_werkzeug': True
-    }
+    run_kwargs = {"host": "0.0.0.0", "port": 8000, "allow_unsafe_werkzeug": True}
 
     use_local_certs = os.getenv("USE_LOCAL_CERTS") == "True"
     if use_local_certs:
         run_kwargs.update(
             {
-                'certfile': str(this_dir.parent / "certs" / "localhost+2.pem"),
-                'keyfile': str(this_dir.parent / "certs" / "localhost+2-key.pem"),
+                "certfile": str(this_dir.parent / "certs" / "localhost+2.pem"),
+                "keyfile": str(this_dir.parent / "certs" / "localhost+2-key.pem"),
             }
         )
 
     socketio.run(app, **run_kwargs)
-
