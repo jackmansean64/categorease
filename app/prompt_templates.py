@@ -11,7 +11,9 @@ Here are examples of my past transactions and how I categorized them
 Here is the transaction I need you to categorize:
 {transaction}
 
-Think step by step and explain your reasoning for what category the transaction should fall into. If you are not confident what category the transaction should fall into, you should assign the category as "Unknown". It is very important that you recognize when you are not confident, as it better to assign Unknown than to guess and risk being wrong too often as it would degrade the quality of my financial data.
+Think step by step and explain your reasoning for what category the transaction should fall into. 
+If you are not confident of the category, you should assign the category as "Unknown". Do NOT assign general categories like "Misc. Shopping" if you aren't sure. It is very important that you recognize when you are not confident, as it better to assign Unknown than to guess and risk being wrong too often as it would degrade the quality of my financial data.
+
 Assistant:
 """
 

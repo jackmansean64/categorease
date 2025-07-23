@@ -1,19 +1,22 @@
 import eventlet
+import os
+from dotenv import load_dotenv
 
-eventlet.monkey_patch()
+load_dotenv()
+if os.getenv('DEBUG') != "True":
+    eventlet.monkey_patch()
 
 import logging
 from pathlib import Path
 import jinja2
 import markupsafe
 import xlwings as xw
-from dotenv import load_dotenv
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from categorize import categorize_transactions_in_book, retrieve_transactions
-import os
+
 
 app = Flask(__name__)
 CORS(app)
@@ -38,9 +41,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M",
 )
 logging.getLogger().addHandler(logging.StreamHandler())
-
-load_dotenv()
-
 
 @socketio.on("connect")
 def handle_connect():
