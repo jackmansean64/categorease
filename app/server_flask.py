@@ -101,31 +101,61 @@ def categorize_transactions():
         return book.json()
 
 
-@app.route("/categorize-transactions-count", methods=["POST"])
-def categorize_transactions_count():
-    """Get count of uncategorized transactions without processing them"""
+@app.route("/categorize-transactions-batch-init", methods=["POST"])
+def categorize_transactions_batch_init():
+    """Initialize batch processing and store batch info in Excel"""
     with xw.Book(json=request.json) as book:
         previously_categorized, uncategorized_transactions = retrieve_transactions(book)
-        return {
-            "uncategorized_count": len(uncategorized_transactions),
-            "categorized_count": len(previously_categorized),
-            "total_count": len(uncategorized_transactions) + len(previously_categorized)
-        }
+        total_uncategorized = len(uncategorized_transactions)
+        
+        # Store batch info in a hidden sheet that client can read
+        try:
+            # Try to delete existing temp sheet
+            try:
+                book.sheets["_batch_info"].delete()
+            except:
+                pass
+            
+            temp_sheet = book.sheets.add("_batch_info")
+            temp_sheet.range("A1").value = "total_uncategorized"
+            temp_sheet.range("B1").value = total_uncategorized
+            temp_sheet.range("A2").value = "current_batch"
+            temp_sheet.range("B2").value = 0
+            temp_sheet.range("A3").value = "batch_size"
+            temp_sheet.range("B3").value = 5
+            
+            # Hide the sheet
+            temp_sheet.visible = False
+            
+        except Exception as e:
+            logging.error(f"Error creating batch info sheet: {e}")
+        
+        return book.json()
 
 
 @app.route("/categorize-transactions-batch", methods=["POST"])
 def categorize_transactions_batch():
     """Process a specific batch of transactions"""
     with xw.Book(json=request.json) as book:
-        batch_number = request.json.get('batchNumber', 0)
-        batch_size = request.json.get('batchSize', 5)
-        
-        book = categorize_transactions_batch_in_book(
-            book, 
-            socketio, 
-            batch_number, 
-            batch_size
-        )
+        try:
+            # Get batch info from hidden sheet
+            temp_sheet = book.sheets["_batch_info"]
+            current_batch = int(temp_sheet.range("B2").value)
+            batch_size = int(temp_sheet.range("B3").value)
+            
+            book = categorize_transactions_batch_in_book(
+                book, 
+                socketio, 
+                current_batch, 
+                batch_size
+            )
+            
+            # Update current batch number for next call
+            temp_sheet.range("B2").value = current_batch + 1
+            
+        except Exception as e:
+            logging.error(f"Error in batch processing: {e}")
+            
         return book.json()
 
 
