@@ -46,6 +46,71 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     return update_categories_in_sheet(book, categorized_transactions)
 
 
+def categorize_transactions_batch_in_book(
+    book: Book, 
+    socketio: SocketIO, 
+    batch_number: int, 
+    batch_size: int
+) -> Book:
+    """Process a specific batch of transactions"""
+    
+    # Get all transactions (we need this to maintain context for AI)
+    previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
+    
+    # Calculate batch boundaries
+    start_idx = batch_number * batch_size
+    end_idx = min(start_idx + batch_size, len(uncategorized_transactions))
+    batch_transactions = uncategorized_transactions[start_idx:end_idx]
+    
+    if not batch_transactions:
+        # No transactions to process in this batch
+        logging.info(f"Batch {batch_number}: No transactions to process")
+        return book
+    
+    categories = retrieve_categories(book)
+    
+    logging.info(f"Processing batch {batch_number}: transactions {start_idx} to {end_idx-1} ({len(batch_transactions)} transactions)")
+    
+    try:
+        # Process only this batch of transactions sequentially (not parallel to avoid memory issues)
+        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = []
+        
+        for i, transaction in enumerate(batch_transactions):
+            try:
+                categorized_transaction, cost = model_categorize_transaction(
+                    transaction=transaction,
+                    categories=categories,
+                    categorized_transactions=previously_categorized_transactions,
+                    socketio=socketio,
+                )
+                categorized_transactions_and_costs.append((categorized_transaction, cost))
+                
+                # Add this newly categorized transaction to the context for subsequent ones
+                previously_categorized_transactions.append(categorized_transaction)
+                
+                logging.debug(f"Batch {batch_number}, transaction {i+1}/{len(batch_transactions)}: {transaction.transaction_id} -> {categorized_transaction.category}")
+                
+            except Exception as e:
+                logging.error(f"Error categorizing transaction {transaction.transaction_id}: {e}")
+                socketio.emit("error", {"error": f"Error processing transaction: {str(e)}"})
+                raise e
+    
+    except Exception as e:
+        logging.error(f"Batch processing failed: {e}")
+        socketio.emit("error", {"error": str(e)})
+        raise e
+
+    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
+    logging.info(f"Batch {batch_number} cost: ${total_cost:.4f}")
+
+    categorized_transactions = [
+        transaction for transaction, _ in categorized_transactions_and_costs
+    ]
+
+    # Update only the transactions from this batch
+    return update_categories_in_sheet_batch(book, categorized_transactions, uncategorized_transactions, start_idx)
+
+
 def model_categorize_transaction(
     transaction: Transaction,
     categories: List[Category],
@@ -301,4 +366,53 @@ def update_categories_in_sheet(
                     sheet.cells(i + 2, category_col).value = transaction.category
                 break
 
+    return book
+
+
+def update_categories_in_sheet_batch(
+    book: Book, 
+    categorized_transactions: List[CategorizedTransaction], 
+    all_uncategorized_transactions: List[Transaction],
+    start_idx: int
+) -> Book:
+    """Update Excel sheet with categorized transactions from a specific batch"""
+    
+    if not categorized_transactions:
+        return book
+    
+    sheet = book.sheets["Transactions"]
+    headers = sheet.range("A1").expand("right").value
+    transaction_id_col = headers.index("Transaction ID") + 1
+    category_col = headers.index("Category") + 1
+    
+    rows = sheet.tables[0].data_body_range.rows
+    
+    # Create a map of transaction IDs to their new categories for quick lookup
+    transaction_id_to_category = {
+        str(transaction.transaction_id): transaction.category 
+        for transaction in categorized_transactions
+        if transaction.transaction_id is not None and transaction.category != "Unknown"
+    }
+    
+    updated_count = 0
+    for transaction in categorized_transactions:
+        if transaction.transaction_id is None:
+            logging.warning(f"No transaction ID present for {transaction.description}, category can't be assigned.")
+            continue
+            
+        transaction_id_str = str(transaction.transaction_id)
+        if transaction_id_str not in transaction_id_to_category:
+            continue
+            
+        # Find the row with this transaction ID
+        for i, row in enumerate(rows):
+            if str(row[transaction_id_col - 1].value) == transaction_id_str:
+                # Only update if the category is currently empty
+                if not row[category_col - 1].value:
+                    sheet.cells(i + 2, category_col).value = transaction.category
+                    updated_count += 1
+                    logging.debug(f"Updated row {i + 2} with category: {transaction.category}")
+                break
+    
+    logging.info(f"Batch update complete: {updated_count} transactions updated with categories")
     return book

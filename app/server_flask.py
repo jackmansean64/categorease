@@ -15,7 +15,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import categorize_transactions_in_book, retrieve_transactions
+from categorize import categorize_transactions_in_book, retrieve_transactions, categorize_transactions_batch_in_book
 
 
 app = Flask(__name__)
@@ -98,6 +98,34 @@ def categorize_transactions_prompt():
 def categorize_transactions():
     with xw.Book(json=request.json) as book:
         book = categorize_transactions_in_book(book, socketio)
+        return book.json()
+
+
+@app.route("/categorize-transactions-count", methods=["POST"])
+def categorize_transactions_count():
+    """Get count of uncategorized transactions without processing them"""
+    with xw.Book(json=request.json) as book:
+        previously_categorized, uncategorized_transactions = retrieve_transactions(book)
+        return {
+            "uncategorized_count": len(uncategorized_transactions),
+            "categorized_count": len(previously_categorized),
+            "total_count": len(uncategorized_transactions) + len(previously_categorized)
+        }
+
+
+@app.route("/categorize-transactions-batch", methods=["POST"])
+def categorize_transactions_batch():
+    """Process a specific batch of transactions"""
+    with xw.Book(json=request.json) as book:
+        batch_number = request.json.get('batchNumber', 0)
+        batch_size = request.json.get('batchSize', 5)
+        
+        book = categorize_transactions_batch_in_book(
+            book, 
+            socketio, 
+            batch_number, 
+            batch_size
+        )
         return book.json()
 
 

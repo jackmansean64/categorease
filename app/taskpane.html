@@ -150,15 +150,80 @@
         );
     }
 
-    function categorizeTransactions(arg) {
+    async function categorizeTransactions(arg) {
         if (arg === "ok") {
             document.querySelector('.progress-container').style.display = 'block';
             document.getElementById('btn-categorize-transactions').style.display = 'none';
-            xlwings.runPython(
-                window.location.origin + "/categorize-transactions",
-                {include: "Transactions, Categories"}
-            );
+            
+            try {
+                await categorizeTransactionsBatched();
+            } catch (error) {
+                console.error("Categorization failed:", error);
+                alert("Categorization failed: " + error.message);
+                resetUI();
+            }
         }
+    }
+
+    async function categorizeTransactionsBatched() {
+        const batchSize = 5; // Process 5 transactions at a time
+        
+        // Step 1: Get transaction count and initialize
+        console.log("Getting transaction count...");
+        const countResult = await xlwings.runPython(
+            window.location.origin + "/categorize-transactions-count",
+            {include: "Transactions, Categories"}
+        );
+        
+        const totalTransactions = countResult.uncategorized_count;
+        const totalBatches = Math.ceil(totalTransactions / batchSize);
+        
+        console.log(`Processing ${totalTransactions} transactions in ${totalBatches} batches`);
+        
+        // Initialize progress tracking
+        updateGlobalProgress(0, totalTransactions);
+        
+        // Step 2: Process each batch
+        for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
+            console.log(`Processing batch ${batchNumber + 1}/${totalBatches}`);
+            
+            const batchResult = await xlwings.runPython(
+                window.location.origin + "/categorize-transactions-batch",
+                {
+                    include: "Transactions, Categories",
+                    batchNumber: batchNumber,
+                    batchSize: batchSize
+                }
+            );
+            
+            // Update progress after each batch
+            const processedSoFar = Math.min((batchNumber + 1) * batchSize, totalTransactions);
+            updateGlobalProgress(processedSoFar, totalTransactions);
+            
+            console.log(`Batch ${batchNumber + 1} complete. Processed ${processedSoFar}/${totalTransactions} transactions`);
+        }
+        
+        console.log("All batches complete!");
+        resetUI();
+    }
+
+    function updateGlobalProgress(current, total) {
+        const progressBar = document.querySelector('.progress-bar');
+        const progressCount = document.querySelector('.progress-count');
+        const progressTotal = document.querySelector('.progress-total');
+        
+        const percentage = total > 0 ? (current / total) * 100 : 0;
+        
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+        progressCount.textContent = current;
+        progressTotal.textContent = total;
+    }
+
+    function resetUI() {
+        const progressContainer = document.querySelector('.progress-container');
+        progressContainer.style.display = 'none';
+        document.getElementById('btn-categorize-transactions').style.display = 'inline-flex';
     }
 
     const SOCKET_URL = window.location.hostname === 'localhost'
@@ -171,38 +236,12 @@
         console.log("Connected to Flask WebSocket server");
     });
 
-    socket.on("initializeProgressBar", (data) => {
-        const progressContainer = document.querySelector('.progress-container');
-        const progressBar = document.querySelector('.progress-bar');
-        const progressCount = document.querySelector('.progress-count');
-        const progressTotal = document.querySelector('.progress-total');
-
-        progressContainer.style.display = 'block';
-        document.getElementById('btn-categorize-transactions').style.display = 'none';
-        progressBar.style.width = '0%';
-        progressBar.setAttribute('aria-valuenow', 0);
-        progressCount.textContent = '0';
-        progressTotal.textContent = data.value;
-    });
-
-    socket.on("updateProgressBar", () => {
-        const progressBar = document.querySelector('.progress-bar');
-        const progressCount = document.querySelector('.progress-count');
-        const progressTotal = document.querySelector('.progress-total');
-
-        const currentCount = parseInt(progressCount.textContent) + 1;
-        const total = parseInt(progressTotal.textContent);
-        const percentage = (currentCount / total) * 100;
-
-        progressBar.style.width = percentage + '%';
-        progressBar.setAttribute('aria-valuenow', percentage);
-        progressCount.textContent = currentCount;
-    });
-
-    socket.on("clearProgressBar", () => {
-        const progressContainer = document.querySelector('.progress-container');
-        progressContainer.style.display = 'none';
-        document.getElementById('btn-categorize-transactions').style.display = 'inline-flex';
+    // Note: Socket.IO progress events are now handled by client-side batching
+    // Keep socket connection for error handling and future features
+    socket.on("error", (data) => {
+        console.error("Server error:", data.error);
+        alert("Server error: " + data.error);
+        resetUI();
     });
 
     xlwings.registerCallback(categorizeTransactions);
