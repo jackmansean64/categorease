@@ -72,28 +72,15 @@ def categorize_transactions_batch_in_book(
     logging.info(f"Processing batch {batch_number}: transactions {start_idx} to {end_idx-1} ({len(batch_transactions)} transactions)")
     
     try:
-        # Process only this batch of transactions sequentially (not parallel to avoid memory issues)
-        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = []
-        
-        for i, transaction in enumerate(batch_transactions):
-            try:
-                categorized_transaction, cost = model_categorize_transaction(
-                    transaction=transaction,
-                    categories=categories,
-                    categorized_transactions=previously_categorized_transactions,
-                    socketio=socketio,
-                )
-                categorized_transactions_and_costs.append((categorized_transaction, cost))
-                
-                # Add this newly categorized transaction to the context for subsequent ones
-                previously_categorized_transactions.append(categorized_transaction)
-                
-                logging.debug(f"Batch {batch_number}, transaction {i+1}/{len(batch_transactions)}: {transaction.transaction_id} -> {categorized_transaction.category}")
-                
-            except Exception as e:
-                logging.error(f"Error categorizing transaction {transaction.transaction_id}: {e}")
-                socketio.emit("error", {"error": f"Error processing transaction: {str(e)}"})
-                raise e
+        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
+            parallel_invoke_function(
+                function=model_categorize_transaction,
+                variable_args=batch_transactions,
+                categories=categories,
+                categorized_transactions=previously_categorized_transactions,
+                socketio=socketio,
+            )
+        )
     
     except Exception as e:
         logging.error(f"Batch processing failed: {e}")
