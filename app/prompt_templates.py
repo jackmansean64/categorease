@@ -14,11 +14,12 @@ Here is the transaction I need you to categorize:
 Think step by step and explain your reasoning for what category the transaction should fall into. 
 If you are not confident of the category, you should assign the category as "Unknown". Do NOT assign general categories like "Misc. Shopping" if you aren't sure. It is very important that you recognize when you are not confident, as it better to assign Unknown than to guess and risk being wrong too often as it would degrade the quality of my financial data.
 
+Output your assigned category at the bottom of your output between <assigned_category> tags.
 Assistant:
 """
 
 serialize_categories_template = """
-You will format the assigned categories into a JSON object with a specific schema. Make sure your output adheres to this schema exactly. 
+You will format the category specified beetweeen the <assigned_category> tags and the transactions details into a JSON object with the specified schema. Make sure your output adheres to this schema exactly. 
 
 ### Transaction Details:
 {transaction}

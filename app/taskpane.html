@@ -201,7 +201,7 @@
                 
                 await xlwings.runPython(
                     window.location.origin + "/categorize-transactions-batch",
-                    {include: "Transactions, Categories"}
+                    {include: "Transactions, Categories, _batch_info"}
                 );
                 
                 // Update progress after each batch

@@ -124,9 +124,6 @@ def categorize_transactions_batch_init():
             temp_sheet.range("A3").value = "batch_size"
             temp_sheet.range("B3").value = 5
             
-            # Hide the sheet
-            temp_sheet.visible = False
-            
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")
         
