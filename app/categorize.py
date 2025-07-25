@@ -364,7 +364,8 @@ def update_categories_in_sheet_batch(
                 if not row[category_col - 1].value:
                     sheet.cells(i + 2, category_col).value = transaction.category
                     updated_count += 1
-                    logging.debug(f"Updated row {i + 2} with category: {transaction.category}")
+                    if logging.getLogger().isEnabledFor(logging.DEBUG):
+                        logging.debug(f"Updated row {i + 2} with category: {transaction.category}")
                 break
     
     logging.info(f"Batch update complete: {updated_count} transactions updated with categories")

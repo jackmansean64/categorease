@@ -7,6 +7,7 @@ if os.getenv('DEBUG') != "True":
     eventlet.monkey_patch()
 
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import jinja2
 import markupsafe
@@ -31,16 +32,31 @@ socketio = SocketIO(
     # engineio_logger=True
 )
 
-logging.basicConfig(
-    filename="flask_app.log",
-    level=logging.INFO,
-    encoding="utf-8",
-    filemode="a",
-    format="{asctime} - {levelname} - {message}",
-    style="{",
-    datefmt="%Y-%m-%d %H:%M",
+log_level = logging.DEBUG if os.getenv('DEBUG') == "True" else logging.INFO
+
+file_handler = RotatingFileHandler(
+    "flask_app.log",
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding="utf-8"
 )
-logging.getLogger().addHandler(logging.StreamHandler())
+file_handler.setLevel(log_level)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(log_level)
+
+formatter = logging.Formatter(
+    "{asctime} - {levelname} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M"
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.setLevel(log_level)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 @socketio.on("connect")
 def handle_connect():
