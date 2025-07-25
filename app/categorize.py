@@ -15,44 +15,6 @@ import logging
 
 TRANSACTION_HISTORY_LENGTH = 200
 
-def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
-    previously_categorized_transactions, uncategorized_transactions = (
-        retrieve_transactions(book)
-    )
-    categories = retrieve_categories(book)
-    socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
-
-    # Filter previously categorized transactions early to reduce memory usage
-    # Only keep the most recent ones that will actually be used for AI context
-    filtered_previous_transactions = previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH]
-    
-    logging.info(f"Using {len(filtered_previous_transactions)} previous transactions for context (filtered from {len(previously_categorized_transactions)})")
-
-    try:
-        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
-            parallel_invoke_function(
-                function=model_categorize_transaction,
-                variable_args=uncategorized_transactions,
-                categories=categories,
-                categorized_transactions=filtered_previous_transactions,
-                socketio=socketio,
-            )
-        )
-    except Exception as e:
-        logging.error(e)
-        socketio.emit("error", {"error": str(e)})
-        raise e
-
-    socketio.emit("clearProgressBar")
-    total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
-    print(f"Total cost: ${total_cost:.4f}")
-
-    categorized_transactions = [
-        transaction for transaction, _ in categorized_transactions_and_costs
-    ]
-
-    return update_categories_in_sheet(book, categorized_transactions)
-
 
 def categorize_transactions_batch_in_book(
     book: Book, 
@@ -127,7 +89,6 @@ def model_categorize_transaction(
         chat_models.claude_35_haiku_chat,
         ModelName.HAIKU_3_5,
     )
-    socketio.emit("updateProgressBar")
 
     total_cost = analysis_cost + parsing_cost
 

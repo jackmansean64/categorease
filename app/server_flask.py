@@ -15,7 +15,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import categorize_transactions_in_book, retrieve_transactions, categorize_transactions_batch_in_book
+from categorize import retrieve_transactions, categorize_transactions_batch_in_book
 
 
 app = Flask(__name__)
@@ -93,12 +93,6 @@ def categorize_transactions_prompt():
         )
         return book.json()
 
-
-@app.route("/categorize-transactions", methods=["POST"])
-def categorize_transactions():
-    with xw.Book(json=request.json) as book:
-        book = categorize_transactions_in_book(book, socketio)
-        return book.json()
 
 
 @app.route("/categorize-transactions-batch-init", methods=["POST"])
