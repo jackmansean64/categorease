@@ -13,6 +13,8 @@ from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 
+TRANSACTION_HISTORY_LENGTH = 200
+
 def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     previously_categorized_transactions, uncategorized_transactions = (
         retrieve_transactions(book)
@@ -20,13 +22,19 @@ def categorize_transactions_in_book(book: Book, socketio: SocketIO) -> Book:
     categories = retrieve_categories(book)
     socketio.emit("initializeProgressBar", {"value": len(uncategorized_transactions)})
 
+    # Filter previously categorized transactions early to reduce memory usage
+    # Only keep the most recent ones that will actually be used for AI context
+    filtered_previous_transactions = previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH]
+    
+    logging.info(f"Using {len(filtered_previous_transactions)} previous transactions for context (filtered from {len(previously_categorized_transactions)})")
+
     try:
         categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
             parallel_invoke_function(
                 function=model_categorize_transaction,
                 variable_args=uncategorized_transactions,
                 categories=categories,
-                categorized_transactions=previously_categorized_transactions,
+                categorized_transactions=filtered_previous_transactions,
                 socketio=socketio,
             )
         )
@@ -77,7 +85,7 @@ def categorize_transactions_batch_in_book(
                 function=model_categorize_transaction,
                 variable_args=batch_transactions,
                 categories=categories,
-                categorized_transactions=previously_categorized_transactions,
+                categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
                 socketio=socketio,
             )
         )
@@ -133,14 +141,11 @@ def model_analyze_transaction(
     chat_model: BaseChatModel,
     model_name: ModelName,
 ) -> Tuple[str, float]:
-    TRANSACTION_HISTORY_LENGTH = 150
     prompt_template = PromptTemplate.from_template(analysis_template)
 
     formatted_prompt = prompt_template.format(
         categories=TypeAdapter(List[Category]).dump_python(categories),
-        examples=TypeAdapter(List[Transaction]).dump_python(
-            categorized_transactions[:TRANSACTION_HISTORY_LENGTH]
-        ),
+        examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions),
         transaction=uncategorized_transaction.model_dump(),
     )
     # print(formatted_prompt)
