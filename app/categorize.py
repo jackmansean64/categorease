@@ -13,7 +13,7 @@ from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 
-TRANSACTION_HISTORY_LENGTH = 200
+TRANSACTION_HISTORY_LENGTH = 150
 
 
 def categorize_transactions_batch_in_book(
