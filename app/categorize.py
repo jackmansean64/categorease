@@ -109,7 +109,7 @@ def model_analyze_transaction(
         examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions),
         transaction=uncategorized_transaction.model_dump(),
     )
-    # print(formatted_prompt)
+    # print("Formatted Prompt: " + formatted_prompt)
 
     analysis_response = chat_model.invoke(formatted_prompt)
 
@@ -137,6 +137,7 @@ def model_parse_category_from_analysis(
         transaction=uncategorized_transaction,
         json_structure=CategorizedTransaction.model_json_schema(),
     )
+    # print("Formatted Prompt: " + formatted_prompt)
 
     prompt = [
         AIMessage(content=analysis_response),
