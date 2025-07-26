@@ -165,18 +165,8 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
         "Description",
         "Category",
         "Amount",
-        "Labels",
-        "Notes",
         "Account",
-        "Account #",
-        "Institution",
-        "Month",
-        "Week",
         "Transaction ID",
-        "Account ID",
-        "Check Number",
-        "Full Description",
-        "Date Added",
     ]
 
     transactions_sheet = book.sheets["Transactions"]
@@ -184,13 +174,9 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
     transactions_df = pd.DataFrame(transactions_data[1:], columns=transactions_data[0])
 
     transactions_df["Date"] = pd.to_datetime(transactions_df["Date"])
-    transactions_df["Date Added"] = pd.to_datetime(transactions_df["Date Added"])
     transactions_df = transactions_df.astype(
         {
-            "Account #": str,
             "Transaction ID": str,
-            "Account ID": str,
-            "Check Number": str,
         }
     )
     for col in transaction_columns:
@@ -241,17 +227,8 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     # Clean all optional columns
     columns_to_clean = [
         "Category",
-        "Labels",
-        "Notes",
-        "Check Number",
         "Account",
-        "Account #",
-        "Institution",
-        "Month",
-        "Week",
         "Transaction ID",
-        "Account ID",
-        "Full Description",
     ]
     for col in columns_to_clean:
         df[col] = df[col].where(pd.notna(df[col]), None)
