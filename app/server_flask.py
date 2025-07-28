@@ -32,7 +32,7 @@ socketio = SocketIO(
     # engineio_logger=True
 )
 
-log_level = logging.INFO if os.getenv('DEBUG') == "True" else logging.ERROR
+log_level = logging.INFO
 
 file_handler = RotatingFileHandler(
     "flask_app.log",
