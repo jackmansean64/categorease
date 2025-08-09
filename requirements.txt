@@ -14,4 +14,5 @@ langchain_anthropic
 python-dotenv
 black
 eventlet
+beautifulsoup4
 git+https://github.com/marking-helper/toolkit.git

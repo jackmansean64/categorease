@@ -12,6 +12,7 @@ from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
+from bs4 import BeautifulSoup
 
 TRANSACTION_HISTORY_LENGTH = 150
 
@@ -83,16 +84,12 @@ def model_categorize_transaction(
         ModelName.HAIKU_3_5,
     )
 
-    parsed_category, parsing_cost = model_parse_category_from_analysis(
+    parsed_category = parse_category_from_analysis(
         transaction,
         analysis_response,
-        chat_models.claude_35_haiku_chat,
-        ModelName.HAIKU_3_5,
     )
 
-    total_cost = analysis_cost + parsing_cost
-
-    return parsed_category, total_cost
+    return parsed_category, analysis_cost
 
 
 def model_analyze_transaction(
@@ -123,41 +120,32 @@ def model_analyze_transaction(
     return analysis_response.content, total_cost
 
 
-def model_parse_category_from_analysis(
+def parse_category_from_analysis(
     uncategorized_transaction: Transaction,
     analysis_response: str,
-    chat_model: BaseChatModel,
-    model_name: ModelName,
-) -> Tuple[CategorizedTransaction, float]:
-    serialization_prompt_template = PromptTemplate.from_template(
-        serialize_categories_template
+) -> CategorizedTransaction:
+    soup = BeautifulSoup(analysis_response, 'html.parser')
+    assigned_category_tag = soup.find('assigned_category')
+    
+    if assigned_category_tag:
+        category = assigned_category_tag.get_text().strip()
+    else:
+        import re
+        match = re.search(r'<assigned_category>(.*?)</assigned_category>', analysis_response, re.DOTALL | re.IGNORECASE)
+        if match:
+            category = match.group(1).strip()
+        else:
+            logging.warning(f"No assigned_category tag found in analysis response for transaction {uncategorized_transaction.transaction_id}")
+            category = "Unknown"
+    
+    categorized_transaction = CategorizedTransaction(
+        transaction_id=str(uncategorized_transaction.transaction_id) if uncategorized_transaction.transaction_id else "",
+        date=uncategorized_transaction.date,
+        description=uncategorized_transaction.description,
+        category=category
     )
-
-    formatted_prompt = serialization_prompt_template.format(
-        transaction=uncategorized_transaction,
-        json_structure=CategorizedTransaction.model_json_schema(),
-    )
-    # print("Formatted Prompt: " + formatted_prompt)
-
-    prompt = [
-        AIMessage(content=analysis_response),
-        HumanMessage(content=formatted_prompt),
-    ]
-
-    category_assignment_response = chat_model.invoke(prompt)
-    categorized_transaction = CategorizedTransaction.model_validate_json(
-        category_assignment_response.content
-    )
-    # print(assigned_category)
-
-    total_cost = calculate_total_prompt_cost(
-        category_assignment_response.response_metadata["usage"]["prompt_tokens"],
-        category_assignment_response.response_metadata["usage"]["completion_tokens"],
-        model_name,
-    )
-    # print(f"Total Cost: ${total_cost}")
-
-    return categorized_transaction, total_cost
+    
+    return categorized_transaction
 
 
 def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transaction]]:
