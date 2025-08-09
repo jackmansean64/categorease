@@ -18,54 +18,55 @@ TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
 UNKNOWN_CATEGORY = "Unknown"
 
+processed_transaction_ids = set()
+
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
-    if hasattr(categorize_transactions_batch_in_book, '_processed_transaction_ids'):
-        categorize_transactions_batch_in_book._processed_transaction_ids.clear()
-        logging.info("Categorization session reset - all transactions can be reprocessed")
+    processed_transaction_ids.clear()
+    logging.info(
+        "Categorization session reset - all transactions can be reprocessed"
+    )
 
-def categorize_transactions_batch_in_book(
-    book: Book, 
-    socketio: SocketIO, 
-    batch_number: int, 
-    batch_size: int
+
+def categorize_transaction_batch(
+    book: Book, socketio: SocketIO, batch_number: int, batch_size: int
 ) -> Book:
     """Process a specific batch of transactions"""
-    
-    previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
-    
-    if not hasattr(categorize_transactions_batch_in_book, '_processed_transaction_ids'):
-        categorize_transactions_batch_in_book._processed_transaction_ids = set()
-    
-    processed_ids = categorize_transactions_batch_in_book._processed_transaction_ids
-    
+
+    previously_categorized_transactions, uncategorized_transactions = (
+        retrieve_transactions(book)
+    )
+
     unprocessed_transactions = [
-        t for t in uncategorized_transactions 
-        if t.transaction_id not in processed_ids
+        t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
-    
+
     batch_transactions = unprocessed_transactions[:batch_size]
-    
+
     if not batch_transactions:
         logging.info(f"Batch {batch_number}: No unprocessed transactions remaining")
         reset_categorization_session()
         return book
-    
+
     categories = retrieve_categories(book)
-    
-    logging.info(f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)")
-    
+
+    logging.info(
+        f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
+    )
+
     try:
-        categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
-            parallel_invoke_function(
-                function=model_categorize_transaction,
-                variable_args=batch_transactions,
-                categories=categories,
-                categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
-                socketio=socketio,
-            )
+        categorized_transactions_and_costs: List[
+            Tuple[CategorizedTransaction, float]
+        ] = parallel_invoke_function(
+            function=model_categorize_transaction,
+            variable_args=batch_transactions,
+            categories=categories,
+            categorized_transactions=previously_categorized_transactions[
+                :TRANSACTION_HISTORY_LENGTH
+            ],
+            socketio=socketio,
         )
-    
+
     except Exception as e:
         logging.error(f"Batch processing failed: {e}")
         socketio.emit("error", {"error": str(e)})
@@ -73,7 +74,7 @@ def categorize_transactions_batch_in_book(
 
     for transaction in batch_transactions:
         if transaction.transaction_id:
-            processed_ids.add(transaction.transaction_id)
+            processed_transaction_ids.add(transaction.transaction_id)
 
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
     logging.info(f"Batch {batch_number} cost: ${total_cost:.4f}")
@@ -82,7 +83,9 @@ def categorize_transactions_batch_in_book(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
-    return update_categories_in_sheet_batch(book, categorized_transactions, uncategorized_transactions)
+    return update_categories_in_sheet_batch(
+        book, categorized_transactions, uncategorized_transactions
+    )
 
 
 def model_categorize_transaction(
@@ -92,12 +95,14 @@ def model_categorize_transaction(
     socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
-    
-    valid_categories = [category.category for category in categories] + [UNKNOWN_CATEGORY]
-    
+
+    valid_categories = [category.category for category in categories] + [
+        UNKNOWN_CATEGORY
+    ]
+
     total_cost = 0.0
     max_retries = 2
-    
+
     for attempt in range(max_retries + 1):
         analysis_response, analysis_cost = model_analyze_transaction(
             transaction,
@@ -106,22 +111,26 @@ def model_categorize_transaction(
             chat_models.claude_35_haiku_chat,
             ModelName.HAIKU_3_5,
         )
-        
+
         total_cost += analysis_cost
-        
+
         parsed_category = parse_category_from_analysis(
             transaction,
             analysis_response,
             valid_categories,
         )
-        
+
         if parsed_category.category != INVALID_CATEGORY:
             return parsed_category, total_cost
         elif attempt == max_retries:
-            logging.info(f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}")
+            logging.info(
+                f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}"
+            )
             return parsed_category, total_cost
         else:
-            logging.info(f"Attempt {attempt + 1} failed for transaction {transaction.transaction_id}, retrying...")
+            logging.info(
+                f"Attempt {attempt + 1} failed for transaction {transaction.transaction_id}, retrying..."
+            )
 
     return parsed_category, total_cost
 
@@ -159,31 +168,45 @@ def parse_category_from_analysis(
     analysis_response: str,
     valid_categories: List[str],
 ) -> CategorizedTransaction:
-    soup = BeautifulSoup(analysis_response, 'html.parser')
-    assigned_category_tag = soup.find('assigned_category')
-    
+    soup = BeautifulSoup(analysis_response, "html.parser")
+    assigned_category_tag = soup.find("assigned_category")
+
     if assigned_category_tag:
         category = assigned_category_tag.get_text().strip()
     else:
         import re
-        match = re.search(r'<assigned_category>(.*?)</assigned_category>', analysis_response, re.DOTALL | re.IGNORECASE)
+
+        match = re.search(
+            r"<assigned_category>(.*?)</assigned_category>",
+            analysis_response,
+            re.DOTALL | re.IGNORECASE,
+        )
         if match:
             category = match.group(1).strip()
         else:
-            logging.warning(f"No assigned_category tag found in analysis response for transaction {uncategorized_transaction.transaction_id}")
+            logging.warning(
+                f"No assigned_category tag found in analysis response for transaction {uncategorized_transaction.transaction_id}"
+            )
             category = UNKNOWN_CATEGORY
-    
+
     if category not in valid_categories:
-        logging.warning(f"Invalid category '{category}' for transaction {uncategorized_transaction.transaction_id}. Valid categories: {valid_categories}")
+        logging.warning(
+            f"Invalid category '{category}' for transaction {uncategorized_transaction.transaction_id}."
+        )
         category = INVALID_CATEGORY
-    
+
     categorized_transaction = CategorizedTransaction(
-        transaction_id=str(uncategorized_transaction.transaction_id) if uncategorized_transaction.transaction_id else "",
+        transaction_id=(
+            str(uncategorized_transaction.transaction_id)
+            if uncategorized_transaction.transaction_id
+            else ""
+        ),
         date=uncategorized_transaction.date,
         description=uncategorized_transaction.description,
-        category=category
+        category=category,
     )
-    
+    logging.info(f"Successfuly categorized transaction: {categorized_transaction}")
+
     return categorized_transaction
 
 
@@ -308,62 +331,77 @@ def update_categories_in_sheet(
 
     for transaction in categorized_transactions:
         if transaction.transaction_id is None:
-            print(f"No transaction ID present for {transaction.description}, category can't be assigned.")
+            print(
+                f"No transaction ID present for {transaction.description}, category can't be assigned."
+            )
             continue
-            
+
         for i, row in enumerate(rows):
-            if str(row[transaction_id_col - 1].value) == str(transaction.transaction_id):
+            if str(row[transaction_id_col - 1].value) == str(
+                transaction.transaction_id
+            ):
                 if (
                     not row[category_col - 1].value
                     and transaction.category != UNKNOWN_CATEGORY
                 ):
                     sheet.cells(i + 2, category_col).value = transaction.category
                 break
+            else:
+                logging.warning(
+                    f"categorized transaction with ID: {transaction.transaction_id} couldn't be matched to a transaction in the sheet."
+                )
 
     return book
 
 
 def update_categories_in_sheet_batch(
-    book: Book, 
-    categorized_transactions: List[CategorizedTransaction], 
+    book: Book,
+    categorized_transactions: List[CategorizedTransaction],
     all_uncategorized_transactions: List[Transaction],
 ) -> Book:
     """Update Excel sheet with categorized transactions from a specific batch"""
-    
+
     if not categorized_transactions:
         return book
-    
+
     sheet = book.sheets["Transactions"]
     headers = sheet.range("A1").expand("right").value
     transaction_id_col = headers.index("Transaction ID") + 1
     category_col = headers.index("Category") + 1
-    
+
     rows = sheet.tables[0].data_body_range.rows
-    
+
     transaction_id_to_category = {
-        str(transaction.transaction_id): transaction.category 
+        str(transaction.transaction_id): transaction.category
         for transaction in categorized_transactions
-        if transaction.transaction_id is not None and transaction.category != UNKNOWN_CATEGORY
+        if transaction.transaction_id is not None
+        and transaction.category != UNKNOWN_CATEGORY
     }
-    
+
     updated_count = 0
     for transaction in categorized_transactions:
         if transaction.transaction_id is None:
-            logging.warning(f"No transaction ID present for {transaction.description}, category can't be assigned.")
+            logging.warning(
+                f"No transaction ID present for {transaction.description}, category can't be assigned."
+            )
             continue
-            
+
         transaction_id_str = str(transaction.transaction_id)
         if transaction_id_str not in transaction_id_to_category:
             continue
-            
+
         for i, row in enumerate(rows):
             if str(row[transaction_id_col - 1].value) == transaction_id_str:
                 if not row[category_col - 1].value:
                     sheet.cells(i + 2, category_col).value = transaction.category
                     updated_count += 1
                     if logging.getLogger().isEnabledFor(logging.DEBUG):
-                        logging.debug(f"Updated row {i + 2} with category: {transaction.category}")
+                        logging.debug(
+                            f"Updated row {i + 2} with category: {transaction.category}"
+                        )
                 break
-    
-    logging.info(f"Batch update complete: {updated_count} transactions updated with categories")
+
+    logging.info(
+        f"Batch update complete: {updated_count} transactions updated with categories"
+    )
     return book

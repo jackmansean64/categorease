@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-if os.getenv('DEBUG') != "True":
+if os.getenv("DEBUG") != "True":
     eventlet.monkey_patch()
 
 import logging
@@ -16,7 +16,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import retrieve_transactions, categorize_transactions_batch_in_book
+from categorize import retrieve_transactions, categorize_transaction_batch
 
 
 app = Flask(__name__)
@@ -35,10 +35,7 @@ socketio = SocketIO(
 log_level = logging.INFO
 
 file_handler = RotatingFileHandler(
-    "flask_app.log",
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5,
-    encoding="utf-8"
+    "flask_app.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 10MB
 )
 file_handler.setLevel(log_level)
 
@@ -46,9 +43,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(log_level)
 
 formatter = logging.Formatter(
-    "{asctime} - {levelname} - {message}",
-    style="{",
-    datefmt="%Y-%m-%d %H:%M"
+    "{asctime} - {levelname} - {message}", style="{", datefmt="%Y-%m-%d %H:%M"
 )
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
@@ -57,6 +52,7 @@ logger = logging.getLogger()
 logger.setLevel(log_level)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
 
 @socketio.on("connect")
 def handle_connect():
@@ -110,14 +106,13 @@ def categorize_transactions_prompt():
         return book.json()
 
 
-
 @app.route("/categorize-transactions-batch-init", methods=["POST"])
 def categorize_transactions_batch_init():
     """Initialize batch processing and store batch info in Excel"""
     with xw.Book(json=request.json) as book:
         previously_categorized, uncategorized_transactions = retrieve_transactions(book)
         total_uncategorized = len(uncategorized_transactions)
-        
+
         # Store batch info in a hidden sheet that client can read
         try:
             # Try to delete existing temp sheet
@@ -125,7 +120,7 @@ def categorize_transactions_batch_init():
                 book.sheets["_batch_info"].delete()
             except:
                 pass
-            
+
             temp_sheet = book.sheets.add("_batch_info")
             temp_sheet.range("A1").value = "total_uncategorized"
             temp_sheet.range("B1").value = total_uncategorized
@@ -133,10 +128,10 @@ def categorize_transactions_batch_init():
             temp_sheet.range("B2").value = 0
             temp_sheet.range("A3").value = "batch_size"
             temp_sheet.range("B3").value = 5
-            
+
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")
-        
+
         return book.json()
 
 
@@ -145,24 +140,19 @@ def categorize_transactions_batch():
     """Process a specific batch of transactions"""
     with xw.Book(json=request.json) as book:
         try:
-            # Get batch info from hidden sheet
             temp_sheet = book.sheets["_batch_info"]
             current_batch = int(temp_sheet.range("B2").value)
             batch_size = int(temp_sheet.range("B3").value)
-            
-            book = categorize_transactions_batch_in_book(
-                book, 
-                socketio, 
-                current_batch, 
-                batch_size
+
+            book = categorize_transaction_batch(
+                book, socketio, current_batch, batch_size
             )
-            
-            # Update current batch number for next call
+
             temp_sheet.range("B2").value = current_batch + 1
-            
+
         except Exception as e:
             logging.error(f"Error in batch processing: {e}")
-            
+
         return book.json()
 
 
@@ -206,24 +196,19 @@ def static_proxy(path):
 @app.errorhandler(Exception)
 def xlwings_exception_handler(error):
     # This handles all exceptions, so you may want to make this more restrictive
-     return Response(str(error), status=500)
+    return Response(str(error), status=500)
 
 
 if __name__ == "__main__":
-    run_kwargs = {
-        'host': "0.0.0.0",
-        'port': 8000,
-        'allow_unsafe_werkzeug': True
-    }
+    run_kwargs = {"host": "0.0.0.0", "port": 8000, "allow_unsafe_werkzeug": True}
 
     use_local_certs = os.getenv("USE_LOCAL_CERTS") == "True"
     if use_local_certs:
         run_kwargs.update(
             {
-                'certfile': str(this_dir.parent / "certs" / "localhost+2.pem"),
-                'keyfile': str(this_dir.parent / "certs" / "localhost+2-key.pem"),
+                "certfile": str(this_dir.parent / "certs" / "localhost+2.pem"),
+                "keyfile": str(this_dir.parent / "certs" / "localhost+2-key.pem"),
             }
         )
 
     socketio.run(app, **run_kwargs)
-
