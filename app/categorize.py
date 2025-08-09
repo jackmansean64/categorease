@@ -15,7 +15,8 @@ import logging
 from bs4 import BeautifulSoup
 
 TRANSACTION_HISTORY_LENGTH = 150
-
+INVALID_CATEGORY = "Invalid"
+UNKNOWN_CATEGORY = "Unknown"
 
 def categorize_transactions_batch_in_book(
     book: Book, 
@@ -76,20 +77,38 @@ def model_categorize_transaction(
     socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     chat_models = ChatModelsSetup()
-    analysis_response, analysis_cost = model_analyze_transaction(
-        transaction,
-        categories,
-        categorized_transactions,
-        chat_models.claude_35_haiku_chat,
-        ModelName.HAIKU_3_5,
-    )
+    
+    valid_categories = [category.category for category in categories] + [UNKNOWN_CATEGORY]
+    
+    total_cost = 0.0
+    max_retries = 2
+    
+    for attempt in range(max_retries + 1):
+        analysis_response, analysis_cost = model_analyze_transaction(
+            transaction,
+            categories,
+            categorized_transactions,
+            chat_models.claude_35_haiku_chat,
+            ModelName.HAIKU_3_5,
+        )
+        
+        total_cost += analysis_cost
+        
+        parsed_category = parse_category_from_analysis(
+            transaction,
+            analysis_response,
+            valid_categories,
+        )
+        
+        if parsed_category.category != INVALID_CATEGORY:
+            return parsed_category, total_cost
+        elif attempt == max_retries:
+            logging.info(f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}")
+            return parsed_category, total_cost
+        else:
+            logging.info(f"Attempt {attempt + 1} failed for transaction {transaction.transaction_id}, retrying...")
 
-    parsed_category = parse_category_from_analysis(
-        transaction,
-        analysis_response,
-    )
-
-    return parsed_category, analysis_cost
+    return parsed_category, total_cost
 
 
 def model_analyze_transaction(
@@ -123,6 +142,7 @@ def model_analyze_transaction(
 def parse_category_from_analysis(
     uncategorized_transaction: Transaction,
     analysis_response: str,
+    valid_categories: List[str],
 ) -> CategorizedTransaction:
     soup = BeautifulSoup(analysis_response, 'html.parser')
     assigned_category_tag = soup.find('assigned_category')
@@ -136,7 +156,11 @@ def parse_category_from_analysis(
             category = match.group(1).strip()
         else:
             logging.warning(f"No assigned_category tag found in analysis response for transaction {uncategorized_transaction.transaction_id}")
-            category = "Unknown"
+            category = UNKNOWN_CATEGORY
+    
+    if category not in valid_categories:
+        logging.warning(f"Invalid category '{category}' for transaction {uncategorized_transaction.transaction_id}. Valid categories: {valid_categories}")
+        category = INVALID_CATEGORY
     
     categorized_transaction = CategorizedTransaction(
         transaction_id=str(uncategorized_transaction.transaction_id) if uncategorized_transaction.transaction_id else "",
@@ -280,7 +304,7 @@ def update_categories_in_sheet(
             if str(row[transaction_id_col - 1].value) == str(transaction.transaction_id):
                 if (
                     not row[category_col - 1].value
-                    and transaction.category != "Unknown"
+                    and transaction.category != UNKNOWN_CATEGORY
                 ):
                     sheet.cells(i + 2, category_col).value = transaction.category
                 break
@@ -310,7 +334,7 @@ def update_categories_in_sheet_batch(
     transaction_id_to_category = {
         str(transaction.transaction_id): transaction.category 
         for transaction in categorized_transactions
-        if transaction.transaction_id is not None and transaction.category != "Unknown"
+        if transaction.transaction_id is not None and transaction.category != UNKNOWN_CATEGORY
     }
     
     updated_count = 0
