@@ -28,11 +28,7 @@ def categorize_transactions_batch_in_book(
     
     # Get all transactions (we need this to maintain context for AI)
     previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
-    
-    # Calculate batch boundaries
-    start_idx = batch_number * batch_size
-    end_idx = min(start_idx + batch_size, len(uncategorized_transactions))
-    batch_transactions = uncategorized_transactions[start_idx:end_idx]
+    batch_transactions = uncategorized_transactions[:batch_size]
     
     if not batch_transactions:
         # No transactions to process in this batch
@@ -41,7 +37,7 @@ def categorize_transactions_batch_in_book(
     
     categories = retrieve_categories(book)
     
-    logging.info(f"Processing batch {batch_number}: transactions {start_idx} to {end_idx-1} ({len(batch_transactions)} transactions)")
+    logging.info(f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions from {len(uncategorized_transactions)} remaining")
     
     try:
         categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
@@ -67,7 +63,7 @@ def categorize_transactions_batch_in_book(
     ]
 
     # Update only the transactions from this batch
-    return update_categories_in_sheet_batch(book, categorized_transactions, uncategorized_transactions, start_idx)
+    return update_categories_in_sheet_batch(book, categorized_transactions, uncategorized_transactions)
 
 
 def model_categorize_transaction(
@@ -316,7 +312,6 @@ def update_categories_in_sheet_batch(
     book: Book, 
     categorized_transactions: List[CategorizedTransaction], 
     all_uncategorized_transactions: List[Transaction],
-    start_idx: int
 ) -> Book:
     """Update Excel sheet with categorized transactions from a specific batch"""
     
