@@ -18,6 +18,12 @@ TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
 UNKNOWN_CATEGORY = "Unknown"
 
+def reset_categorization_session():
+    """Reset the in-memory tracking of processed transactions for a new categorization session"""
+    if hasattr(categorize_transactions_batch_in_book, '_processed_transaction_ids'):
+        categorize_transactions_batch_in_book._processed_transaction_ids.clear()
+        logging.info("Categorization session reset - all transactions can be reprocessed")
+
 def categorize_transactions_batch_in_book(
     book: Book, 
     socketio: SocketIO, 
@@ -26,18 +32,28 @@ def categorize_transactions_batch_in_book(
 ) -> Book:
     """Process a specific batch of transactions"""
     
-    # Get all transactions (we need this to maintain context for AI)
     previously_categorized_transactions, uncategorized_transactions = retrieve_transactions(book)
-    batch_transactions = uncategorized_transactions[:batch_size]
+    
+    if not hasattr(categorize_transactions_batch_in_book, '_processed_transaction_ids'):
+        categorize_transactions_batch_in_book._processed_transaction_ids = set()
+    
+    processed_ids = categorize_transactions_batch_in_book._processed_transaction_ids
+    
+    unprocessed_transactions = [
+        t for t in uncategorized_transactions 
+        if t.transaction_id not in processed_ids
+    ]
+    
+    batch_transactions = unprocessed_transactions[:batch_size]
     
     if not batch_transactions:
-        # No transactions to process in this batch
-        logging.info(f"Batch {batch_number}: No transactions to process")
+        logging.info(f"Batch {batch_number}: No unprocessed transactions remaining")
+        reset_categorization_session()
         return book
     
     categories = retrieve_categories(book)
     
-    logging.info(f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions from {len(uncategorized_transactions)} remaining")
+    logging.info(f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)")
     
     try:
         categorized_transactions_and_costs: List[Tuple[CategorizedTransaction, float]] = (
@@ -55,6 +71,10 @@ def categorize_transactions_batch_in_book(
         socketio.emit("error", {"error": str(e)})
         raise e
 
+    for transaction in batch_transactions:
+        if transaction.transaction_id:
+            processed_ids.add(transaction.transaction_id)
+
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
     logging.info(f"Batch {batch_number} cost: ${total_cost:.4f}")
 
@@ -62,7 +82,6 @@ def categorize_transactions_batch_in_book(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
-    # Update only the transactions from this batch
     return update_categories_in_sheet_batch(book, categorized_transactions, uncategorized_transactions)
 
 
@@ -221,7 +240,6 @@ def clean_amount(amount):
     if pd.isna(amount):
         return None
     if isinstance(amount, str):
-        # Remove currency symbol and commas
         cleaned = amount.replace("$", "").replace(",", "").strip()
         return float(cleaned)
     return float(amount)
@@ -230,10 +248,8 @@ def clean_amount(amount):
 def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     df = df.copy()
 
-    # Clean amount column first
     df["Amount"] = df["Amount"].apply(clean_amount)
 
-    # Clean all optional columns
     columns_to_clean = [
         "Category",
         "Account",
@@ -259,7 +275,6 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
 def _convert_df_to_categories(df: pd.DataFrame) -> List[Category]:
     df = df.copy()
 
-    # Clean optional columns
     columns_to_clean = ["Group", "Type"]
     for col in columns_to_clean:
         df[col] = df[col].where(pd.notna(df[col]), None)
@@ -325,7 +340,6 @@ def update_categories_in_sheet_batch(
     
     rows = sheet.tables[0].data_body_range.rows
     
-    # Create a map of transaction IDs to their new categories for quick lookup
     transaction_id_to_category = {
         str(transaction.transaction_id): transaction.category 
         for transaction in categorized_transactions
@@ -342,10 +356,8 @@ def update_categories_in_sheet_batch(
         if transaction_id_str not in transaction_id_to_category:
             continue
             
-        # Find the row with this transaction ID
         for i, row in enumerate(rows):
             if str(row[transaction_id_col - 1].value) == transaction_id_str:
-                # Only update if the category is currently empty
                 if not row[category_col - 1].value:
                     sheet.cells(i + 2, category_col).value = transaction.category
                     updated_count += 1
