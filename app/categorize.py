@@ -126,6 +126,7 @@ def model_categorize_transaction(
             logging.info(
                 f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}"
             )
+            parsed_category.category = UNKNOWN_CATEGORY
             return parsed_category, total_cost
         else:
             logging.info(
