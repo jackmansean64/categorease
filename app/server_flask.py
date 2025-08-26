@@ -32,7 +32,8 @@ socketio = SocketIO(
     # engineio_logger=True
 )
 
-log_level = logging.INFO
+env_log_level = os.getenv("LOG_LEVEL", "INFO")
+log_level = getattr(logging, env_log_level.upper(), logging.INFO)
 
 file_handler = RotatingFileHandler(
     "flask_app.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 10MB
