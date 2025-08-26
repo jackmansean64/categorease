@@ -123,10 +123,10 @@ def model_categorize_transaction(
         if parsed_category.category != INVALID_CATEGORY:
             return parsed_category, total_cost
         elif attempt == max_retries:
+            parsed_category.category = UNKNOWN_CATEGORY
             logging.info(
                 f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}"
             )
-            parsed_category.category = UNKNOWN_CATEGORY
             return parsed_category, total_cost
         else:
             logging.info(
