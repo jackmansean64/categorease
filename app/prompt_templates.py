@@ -16,7 +16,7 @@ Use the categories and examples of past categorized transactions to help you ide
 From the category information provided to you, you may only assign categories, not groups or types (these are only for context).
 If the transaction amount is negative select an expense type category. Likewise if the amount is positive, select an income type category.
 If you are not atleast 90% confident of the category, you should assign the category as "Unknown". 
-Do NOT assign general categories like "Misc. Shopping" if you aren't sure (e.g. an Amazon transaction)
+Do NOT assign general categories like "Misc. Shopping" if you aren't confident, use "Unknown".
 It is very important that you recognize when you are not confident, as it better to assign Unknown than to guess and risk being wrong too often.
 
 Output your assigned category at the bottom of your output between <assigned_category> tags.
