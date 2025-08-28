@@ -13,11 +13,10 @@ Here is the transaction I need you to categorize:
 
 Think step by step and explain your reasoning for what category should be assigned to the transaction.
 Use the categories and examples of past categorized transactions to help you identify my categorization preferences.
+From the category information provided to you, you may only assign categories, not groups or types (these are only for context).
 If the transaction amount is negative select an expense type category. Likewise if the amount is positive, select an income type category.
-You may only assign categories from the list provided to you.
-You may not assign groups or types, those are just provided for additional context for the associated category.
 If you are not atleast 90% confident of the category, you should assign the category as "Unknown". 
-Do NOT assign general categories like "Misc. Shopping" if you aren't sure. 
+Do NOT assign general categories like "Misc. Shopping" if you aren't confident, use "Unknown".
 It is very important that you recognize when you are not confident, as it better to assign Unknown than to guess and risk being wrong too often.
 
 Output your assigned category at the bottom of your output between <assigned_category> tags.
