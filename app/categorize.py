@@ -54,9 +54,6 @@ def categorize_transaction_batch(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
     )
 
-    logging.warning(f"Batch {batch_number}: Starting parallel_invoke_function with {len(batch_transactions)} transactions")
-    logging.warning(f"Batch {batch_number}: Using {len(previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH])} historical transactions for context")
-    
     try:
         categorized_transactions_and_costs: List[
             Tuple[CategorizedTransaction, float]
@@ -70,8 +67,6 @@ def categorize_transaction_batch(
             socketio=socketio,
         )
         
-        logging.warning(f"Batch {batch_number}: Successfully completed parallel_invoke_function")
-
     except Exception as e:
         logging.error(f"Batch {batch_number}: parallel_invoke_function failed with error: {e}")
         socketio.emit("error", {"error": str(e)})
@@ -99,6 +94,11 @@ def model_categorize_transaction(
     categorized_transactions: List[Transaction],
     socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
+    import time
+    
+    transaction_start_time = time.time()
+    transaction_id = getattr(transaction, 'transaction_id', 'unknown')
+    
     chat_models = ChatModelsSetup()
 
     valid_categories = [category.category for category in categories] + [
@@ -126,18 +126,23 @@ def model_categorize_transaction(
         )
 
         if parsed_category.category != INVALID_CATEGORY:
+            transaction_time = time.time() - transaction_start_time
+            logging.warning(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
             return parsed_category, total_cost
         elif attempt == max_retries:
             parsed_category.category = UNKNOWN_CATEGORY
-            logging.info(
-                f"Final attempt for transaction {transaction.transaction_id}, returning category: {parsed_category.category}"
+            transaction_time = time.time() - transaction_start_time
+            logging.warning(
+                f"Final attempt for transaction {transaction_id}, returning category: {parsed_category.category} after {transaction_time:.1f}s"
             )
             return parsed_category, total_cost
         else:
             logging.info(
-                f"Attempt {attempt + 1} failed for transaction {transaction.transaction_id}, retrying..."
+                f"Attempt {attempt + 1} failed for transaction {transaction_id}, retrying..."
             )
 
+    transaction_time = time.time() - transaction_start_time
+    logging.warning(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
     return parsed_category, total_cost
 
 
@@ -148,6 +153,11 @@ def model_analyze_transaction(
     chat_model: BaseChatModel,
     model_name: ModelName,
 ) -> Tuple[str, float]:
+    import time
+    
+    api_start_time = time.time()
+    transaction_id = getattr(uncategorized_transaction, 'transaction_id', 'unknown')
+    
     prompt_template = PromptTemplate.from_template(analysis_template)
 
     formatted_prompt = prompt_template.format(
@@ -158,6 +168,9 @@ def model_analyze_transaction(
     # print("Formatted Prompt: " + formatted_prompt)
 
     analysis_response = chat_model.invoke(formatted_prompt)
+    api_time = time.time() - api_start_time
+    
+    logging.warning(f"LLM API call for transaction {transaction_id} completed in {api_time:.1f}s")
 
     total_cost = calculate_total_prompt_cost(
         analysis_response.response_metadata["usage"]["prompt_tokens"],
