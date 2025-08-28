@@ -54,6 +54,9 @@ def categorize_transaction_batch(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
     )
 
+    logging.warning(f"Batch {batch_number}: Starting parallel_invoke_function with {len(batch_transactions)} transactions")
+    logging.warning(f"Batch {batch_number}: Using {len(previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH])} historical transactions for context")
+    
     try:
         categorized_transactions_and_costs: List[
             Tuple[CategorizedTransaction, float]
@@ -66,9 +69,11 @@ def categorize_transaction_batch(
             ],
             socketio=socketio,
         )
+        
+        logging.warning(f"Batch {batch_number}: Successfully completed parallel_invoke_function")
 
     except Exception as e:
-        logging.error(f"Batch processing failed: {e}")
+        logging.error(f"Batch {batch_number}: parallel_invoke_function failed with error: {e}")
         socketio.emit("error", {"error": str(e)})
         raise e
 
