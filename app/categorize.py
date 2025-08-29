@@ -1,5 +1,4 @@
 from typing import List, Tuple
-from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
@@ -10,7 +9,7 @@ import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
-from parallel_invoke_function import parallel_invoke_function
+from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 
@@ -29,7 +28,7 @@ def reset_categorization_session():
 
 
 def categorize_transaction_batch(
-    book: Book, socketio: SocketIO, batch_number: int, batch_size: int
+    book: Book, batch_number: int, batch_size: int
 ) -> Book:
     """Process a specific batch of transactions"""
 
@@ -64,12 +63,10 @@ def categorize_transaction_batch(
             categorized_transactions=previously_categorized_transactions[
                 :TRANSACTION_HISTORY_LENGTH
             ],
-            socketio=socketio,
         )
         
     except Exception as e:
         logging.error(f"Batch {batch_number}: parallel_invoke_function failed with error: {e}")
-        socketio.emit("error", {"error": str(e)})
         raise e
 
     for transaction in batch_transactions:
@@ -92,7 +89,6 @@ def model_categorize_transaction(
     transaction: Transaction,
     categories: List[Category],
     categorized_transactions: List[Transaction],
-    socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     import time
     
