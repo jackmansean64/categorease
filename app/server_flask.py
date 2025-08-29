@@ -1,10 +1,7 @@
-import eventlet
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-if os.getenv("DEBUG") != "True":
-    eventlet.monkey_patch()
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -27,7 +24,7 @@ this_dir = Path(__file__).resolve().parent
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode="eventlet",
+    async_mode="threading",
     logger=True,
     # engineio_logger=True
 )
