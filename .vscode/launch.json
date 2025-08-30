@@ -12,7 +12,6 @@
                 "FLASK_ENV": "development",
                 "FLASK_DEBUG": "1",
                 "DEBUG": "True",
-                "GEVENT_SUPPORT": "True",
                 "PYTHONPATH": "${workspaceFolder}/app"
             }
         }
