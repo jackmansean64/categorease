@@ -13,6 +13,7 @@ from prompt_templates import analysis_template, serialize_categories_template
 from parallel_invoke_function import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
+import os
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -55,20 +56,31 @@ def categorize_transaction_batch(
     )
 
     try:
-        categorized_transactions_and_costs: List[
-            Tuple[CategorizedTransaction, float]
-        ] = parallel_invoke_function(
-            function=model_categorize_transaction,
-            variable_args=batch_transactions,
-            categories=categories,
-            categorized_transactions=previously_categorized_transactions[
-                :TRANSACTION_HISTORY_LENGTH
-            ],
-            socketio=socketio,
-        )
+        # Check if multi-threading is disabled via environment variable
+        disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
+        
+        if disable_multi_threading:
+            logging.info(f"Batch {batch_number}: Multi-threading disabled, processing transactions synchronously")
+            categorized_transactions_and_costs = [
+                model_categorize_transaction(
+                    transaction=transaction,
+                    categories=categories,
+                    categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
+                    socketio=socketio,
+                )
+                for transaction in batch_transactions
+            ]
+        else:
+            categorized_transactions_and_costs = parallel_invoke_function(
+                function=model_categorize_transaction,
+                variable_args=batch_transactions,
+                categories=categories,
+                categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
+                socketio=socketio,
+            )
         
     except Exception as e:
-        logging.error(f"Batch {batch_number}: parallel_invoke_function failed with error: {e}")
+        logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
         socketio.emit("error", {"error": str(e)})
         raise e
 
