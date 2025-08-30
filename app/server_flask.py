@@ -32,6 +32,10 @@ socketio = SocketIO(
     # engineio_logger=True
 )
 
+disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
+if disable_multi_threading:
+    logging.info("Multi-threading disabled, processing transactions synchronously")
+
 env_log_level = os.getenv("LOG_LEVEL", "INFO")
 log_level = getattr(logging, env_log_level.upper(), logging.INFO)
 

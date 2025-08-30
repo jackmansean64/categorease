@@ -56,11 +56,9 @@ def categorize_transaction_batch(
     )
 
     try:
-        # Check if multi-threading is disabled via environment variable
         disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
         
         if disable_multi_threading:
-            logging.info(f"Batch {batch_number}: Multi-threading disabled, processing transactions synchronously")
             categorized_transactions_and_costs = [
                 model_categorize_transaction(
                     transaction=transaction,
