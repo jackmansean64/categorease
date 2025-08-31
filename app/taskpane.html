@@ -14,7 +14,6 @@
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         .header {
             display: flex;
@@ -58,6 +57,20 @@
         .btn-categorize:hover {
             background-color: #005A9E;
             border-color: #005A9E;
+        }
+
+        .btn-cancel {
+            font-size: 1rem;
+            padding: 10px 20px;
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
+            margin-top: 10px;
+        }
+
+        .btn-cancel:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
         }
 
         .progress-container {
@@ -126,6 +139,9 @@
         <div class="progress-text text-center mt-2">Categorizing...<span class="progress-count">0</span>/<span
                 class="progress-total">0</span></div>
         <div class="spinner"></div>
+        <div class="text-center mt-3">
+            <button class="btn btn-cancel" id="btn-cancel-categorization" type="button">Cancel Categorization</button>
+        </div>
     </div>
 </div>
 <script>
@@ -141,9 +157,12 @@
     };
 
     document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
+    document.getElementById("btn-cancel-categorization").addEventListener("click", cancelCategorization);
+    
+    let categorizationInProgress = false;
+    let cancellationRequested = false;
 
     function categorizeTransactionsPrompt() {
-        socket.emit('test_connection');
         xlwings.runPython(
             window.location.origin + "/categorize-transactions-prompt",
             {include: "Transactions, Categories"}
@@ -152,6 +171,8 @@
 
     async function categorizeTransactions(arg) {
         if (arg === "ok") {
+            categorizationInProgress = true;
+            cancellationRequested = false; // Reset cancellation flag
             document.querySelector('.progress-container').style.display = 'block';
             document.getElementById('btn-categorize-transactions').style.display = 'none';
             
@@ -163,6 +184,22 @@
                 resetUI();
             }
         }
+    }
+    
+    async function cancelCategorization() {
+        if (!categorizationInProgress || cancellationRequested) {
+            return;
+        }
+        
+        cancellationRequested = true;
+        console.log("Cancellation requested - will stop after current batch");
+        
+        const progressText = document.querySelector('.progress-text');
+        progressText.innerHTML = 'Cancelling... current batch will complete';
+        
+        const cancelBtn = document.getElementById('btn-cancel-categorization');
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Cancelling...';
     }
 
     async function categorizeTransactionsBatched() {
@@ -197,6 +234,13 @@
             
             // Step 3: Process each batch
             for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
+                if (cancellationRequested) {
+                    console.log("Cancellation requested, stopping processing");
+                    alert("Categorization was cancelled. Processed transactions have been saved.");
+                    resetUI();
+                    return;
+                }
+                
                 console.log(`Processing batch ${batchNumber + 1}/${totalBatches}`);
                 
                 await xlwings.runPython(
@@ -238,28 +282,20 @@
     }
 
     function resetUI() {
+        categorizationInProgress = false;
+        cancellationRequested = false;
         const progressContainer = document.querySelector('.progress-container');
         progressContainer.style.display = 'none';
         document.getElementById('btn-categorize-transactions').style.display = 'inline-flex';
+        
+        const cancelBtn = document.getElementById('btn-cancel-categorization');
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel Categorization';
+        
+        const progressText = document.querySelector('.progress-text');
+        progressText.innerHTML = 'Categorizing...<span class="progress-count">0</span>/<span class="progress-total">0</span>';
     }
 
-    const SOCKET_URL = window.location.hostname === 'localhost'
-    ? "https://localhost:8000"
-    : "https://api.categorease.ca";
-
-    const socket = io(SOCKET_URL);
-
-    socket.on("connect", () => {
-        console.log("Connected to Flask WebSocket server");
-    });
-
-    // Note: Socket.IO progress events are now handled by client-side batching
-    // Keep socket connection for error handling and future features
-    socket.on("error", (data) => {
-        console.error("Server error:", data.error);
-        alert("Server error: " + data.error);
-        resetUI();
-    });
 
     xlwings.registerCallback(categorizeTransactions);
 </script>
