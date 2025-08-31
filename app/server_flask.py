@@ -16,7 +16,7 @@ from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import retrieve_transactions, categorize_transaction_batch
+from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
 
 app = Flask(__name__)
@@ -101,13 +101,21 @@ def categorize_transactions_prompt():
     with xw.Book(json=request.json) as book:
         _, uncategorized_transactions = retrieve_transactions(book)
         num_uncategorized = len(uncategorized_transactions)
-        book.app.alert(
-            prompt=f"This will categorize {num_uncategorized} uncategorized transactions.",
-            title="Are you sure?",
-            buttons="ok_cancel",
-            # this is the JS function name that gets called when the user clicks a button
-            callback="categorizeTransactions",
-        )
+        
+        if num_uncategorized > MAX_TRANSACTIONS_TO_CATEGORIZE:
+            book.app.alert(
+                prompt=f"Found {num_uncategorized} uncategorized transactions. Only {MAX_TRANSACTIONS_TO_CATEGORIZE} transactions can be processed at a time. Click OK to process the first {MAX_TRANSACTIONS_TO_CATEGORIZE} transactions, or Cancel to abort.",
+                title="Batch Size Limit",
+                buttons="ok_cancel",
+                callback="categorizeTransactions",
+            )
+        else:
+            book.app.alert(
+                prompt=f"This will categorize {num_uncategorized} uncategorized transactions.",
+                title="Are you sure?",
+                buttons="ok_cancel",
+                callback="categorizeTransactions",
+            )
         return book.json()
 
 
@@ -132,7 +140,7 @@ def categorize_transactions_batch_init():
             temp_sheet.range("A2").value = "current_batch"
             temp_sheet.range("B2").value = 0
             temp_sheet.range("A3").value = "batch_size"
-            temp_sheet.range("B3").value = 5
+            temp_sheet.range("B3").value = min(total_uncategorized, MAX_TRANSACTIONS_TO_CATEGORIZE)
 
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")

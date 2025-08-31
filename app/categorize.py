@@ -18,6 +18,7 @@ import os
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
 UNKNOWN_CATEGORY = "Unknown"
+MAX_TRANSACTIONS_TO_CATEGORIZE = 100
 
 processed_transaction_ids = set()
 
@@ -42,7 +43,8 @@ def categorize_transaction_batch(
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
 
-    batch_transactions = unprocessed_transactions[:batch_size]
+    actual_batch_size = min(batch_size, MAX_TRANSACTIONS_TO_CATEGORIZE, len(unprocessed_transactions))
+    batch_transactions = unprocessed_transactions[:actual_batch_size]
 
     if not batch_transactions:
         logging.info(f"Batch {batch_number}: No unprocessed transactions remaining")
