@@ -182,7 +182,6 @@
                 await categorizeTransactionsBatched();
             } catch (error) {
                 console.error("Categorization failed:", error);
-                alert("Categorization failed: " + error.message);
                 resetUI();
             }
         }
@@ -238,7 +237,6 @@
             for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
                 if (cancellationRequested) {
                     console.log("Cancellation requested, stopping processing");
-                    alert("Categorization was cancelled. Processed transactions have been saved.");
                     resetUI();
                     return;
                 }
@@ -297,7 +295,7 @@
         
         const cancelBtn = document.getElementById('btn-cancel-categorization');
         cancelBtn.disabled = false;
-        cancelBtn.textContent = 'Cancel Categorization';
+        cancelBtn.textContent = 'Cancel';
         
         const progressText = document.querySelector('.progress-text');
         progressText.innerHTML = 'Categorizing...<span class="progress-count">0</span>/<span class="progress-total">0</span>';
@@ -317,7 +315,6 @@
     // Keep socket connection for error handling and future features
     socket.on("error", (data) => {
         console.error("Server error:", data.error);
-        alert("Server error: " + data.error);
         resetUI();
     });
 
