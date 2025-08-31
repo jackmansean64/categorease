@@ -279,8 +279,13 @@
         
         progressBar.style.width = percentage + '%';
         progressBar.setAttribute('aria-valuenow', percentage);
-        progressCount.textContent = current;
-        progressTotal.textContent = total;
+        
+        if (progressCount) {
+            progressCount.textContent = current;
+        }
+        if (progressTotal) {
+            progressTotal.textContent = total;
+        }
     }
 
     function resetUI() {
