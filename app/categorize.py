@@ -10,7 +10,7 @@ import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
-from parallel_invoke_function import parallel_invoke_function
+from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 import os
