@@ -18,6 +18,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
+TRANSACTION_BATCH_SIZE = 5
 
 app = Flask(__name__)
 CORS(app)
@@ -140,7 +141,7 @@ def categorize_transactions_batch_init():
             temp_sheet.range("A2").value = "current_batch"
             temp_sheet.range("B2").value = 0
             temp_sheet.range("A3").value = "batch_size"
-            temp_sheet.range("B3").value = min(total_uncategorized, MAX_TRANSACTIONS_TO_CATEGORIZE)
+            temp_sheet.range("B3").value = TRANSACTION_BATCH_SIZE
 
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")
