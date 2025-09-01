@@ -12,16 +12,21 @@ from pathlib import Path
 import jinja2
 import markupsafe
 import xlwings as xw
-from flask import Flask, Response, request, send_from_directory
+from flask import Flask, Response, request, send_from_directory, jsonify, g
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
+from auth import init_cognito, auth_required, optional_auth, usage_required, get_current_user, get_user_subscription_status, consume_user_transactions
+from stripe_integration import stripe_service, create_subscription_checkout, create_customer_portal_url, track_transaction_usage, get_plan_info
+from mongo_models import User
 
 TRANSACTION_BATCH_SIZE = 5
 
 app = Flask(__name__)
 CORS(app)
+
+init_cognito(app)
 
 this_dir = Path(__file__).resolve().parent
 
@@ -98,6 +103,7 @@ def hello():
 
 
 @app.route("/categorize-transactions-prompt", methods=["POST"])
+@optional_auth
 def categorize_transactions_prompt():
     with xw.Book(json=request.json) as book:
         _, uncategorized_transactions = retrieve_transactions(book)
@@ -121,6 +127,8 @@ def categorize_transactions_prompt():
 
 
 @app.route("/categorize-transactions-batch-init", methods=["POST"])
+@auth_required
+@usage_required()
 def categorize_transactions_batch_init():
     """Initialize batch processing and store batch info in Excel"""
     with xw.Book(json=request.json) as book:
@@ -150,26 +158,115 @@ def categorize_transactions_batch_init():
 
 
 @app.route("/categorize-transactions-batch", methods=["POST"])
+@auth_required
+@usage_required()
 def categorize_transactions_batch():
     """Process a specific batch of transactions"""
+    user = get_current_user()
+    
     with xw.Book(json=request.json) as book:
         try:
             temp_sheet = book.sheets["_batch_info"]
             current_batch = int(temp_sheet.range("B2").value)
             batch_size = int(temp_sheet.range("B3").value)
-
+            
+            # Get actual transaction count before processing
+            _, uncategorized_transactions = retrieve_transactions(book)
+            actual_transaction_count = min(batch_size, len(uncategorized_transactions))
+            
+            # Check and consume user transactions before processing
+            if not consume_user_transactions(user, actual_transaction_count):
+                return jsonify({
+                    'error': 'Insufficient transaction credits',
+                    'transactions_remaining': user.transactions_remaining,
+                    'subscription_tier': user.subscription_tier
+                }), 403
+            
+            # Process the batch
             book = categorize_transaction_batch(
                 book, socketio, current_batch, batch_size
             )
-
+            
+            # Track usage for billing
+            track_transaction_usage(user, actual_transaction_count)
+            
             temp_sheet.range("B2").value = current_batch + 1
 
         except Exception as e:
             logging.error(f"Error in batch processing: {e}")
+            # If processing failed, refund the user's transactions
+            if 'actual_transaction_count' in locals():
+                user.transactions_remaining += actual_transaction_count
+                user.transactions_used_this_period -= actual_transaction_count
+                user.save()
+                logging.info(f"Refunded {actual_transaction_count} transactions to user {user.email}")
 
         return book.json()
 
 
+@app.route("/api/auth/status", methods=["GET"])
+@optional_auth
+def auth_status():
+    """Get current authentication and subscription status"""
+    user = get_current_user()
+    return jsonify(get_user_subscription_status(user))
+
+
+@app.route("/api/subscription/plans", methods=["GET"])
+def get_plans():
+    """Get available subscription plans"""
+    return jsonify(get_plan_info())
+
+
+@app.route("/api/subscription/checkout", methods=["POST"])
+@auth_required
+def create_checkout():
+    """Create Stripe checkout session"""
+    data = request.get_json()
+    plan_type = data.get('plan_type')
+    success_url = data.get('success_url', request.url_root + 'subscription-success')
+    cancel_url = data.get('cancel_url', request.url_root + 'subscription-cancel')
+    
+    if not plan_type or plan_type not in ['basic', 'premium']:
+        return jsonify({'error': 'Invalid plan type'}), 400
+    
+    user = get_current_user()
+    checkout_url = create_subscription_checkout(user, plan_type, success_url, cancel_url)
+    
+    if checkout_url:
+        return jsonify({'checkout_url': checkout_url})
+    else:
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+
+
+@app.route("/api/subscription/portal", methods=["POST"])
+@auth_required
+def customer_portal():
+    """Create customer portal session"""
+    data = request.get_json()
+    return_url = data.get('return_url', request.url_root)
+    
+    user = get_current_user()
+    portal_url = create_customer_portal_url(user, return_url)
+    
+    if portal_url:
+        return jsonify({'portal_url': portal_url})
+    else:
+        return jsonify({'error': 'Failed to create portal session'}), 500
+
+
+@app.route("/api/webhooks/stripe", methods=["POST"])
+def stripe_webhook():
+    """Handle Stripe webhooks"""
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    result = stripe_service.handle_webhook(payload, sig_header)
+    
+    if result['status'] == 'success':
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
 
 
 @app.route("/xlwings/alert")
@@ -190,9 +287,6 @@ def alert():
     )
 
 
-# Add xlwings.html as additional source for templates so the /xlwings/alert endpoint
-# will find xlwings-alert.html. "mytemplates" can be a dummy if the app doesn't use
-# own templates
 loader = jinja2.ChoiceLoader(
     [
         jinja2.FileSystemLoader(str(this_dir / "mytemplates")),
@@ -202,8 +296,6 @@ loader = jinja2.ChoiceLoader(
 app.jinja_loader = loader
 
 
-# Serve static files (HTML and icons)
-# This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
     return send_from_directory(this_dir, path)
@@ -211,7 +303,6 @@ def static_proxy(path):
 
 @app.errorhandler(Exception)
 def xlwings_exception_handler(error):
-    # This handles all exceptions, so you may want to make this more restrictive
     return Response(str(error), status=500)
 
 

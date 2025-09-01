@@ -6,9 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CategorEase</title>
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-    <!--    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js"></script>-->
-    <!--    <script type="text/javascript"-->
-    <!--            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.33.3/xlwingsjs/dist/xlwings.js"></script>-->
     <script type="text/javascript"
             src="xlwings.js"></script>
     <link rel="stylesheet"
@@ -128,6 +125,16 @@
             <img src="icons/categorease_logo.png" alt="CategorEase Logo">
         </div>
     </div>
+    
+    <!-- Authentication Status -->
+    <div class="auth-container" style="padding: 15px; margin-bottom: 15px; border-radius: 5px; background-color: #f8f9fa;">
+        <div id="auth-status">
+            <div class="loading" style="text-align: center; color: #666;">
+                Loading user status...
+            </div>
+        </div>
+    </div>
+    
     <div class="button-container">
         <button class="btn btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions
         </button>
@@ -148,14 +155,167 @@
 <script>
     Office.onReady(function (info) {
     });
-    // Office.onReady(() => {
-    //     OfficeExtension.config.extendedErrorLogging = true;
-    //     // Other code...
-    // });
+
+    // Authentication state
+    let currentUser = null;
+    let authToken = null;
+    
+    Office.onReady(async function (info) {
+        await checkAuthStatus();
+    });
 
     globalThis.getAuth = async function () {
-        return ""
+        return authToken || "";
     };
+    
+    async function checkAuthStatus() {
+        try {
+            const response = await fetch('/api/auth/status', {
+                headers: authToken ? {'Authorization': `Bearer ${authToken}`} : {}
+            });
+            
+            if (response.ok) {
+                const status = await response.json();
+                updateAuthUI(status);
+                currentUser = status;
+            } else {
+                updateAuthUI({authenticated: false});
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            updateAuthUI({authenticated: false});
+        }
+    }
+    
+    function updateAuthUI(status) {
+        const authContainer = document.getElementById('auth-status');
+        
+        if (status.authenticated) {
+            const remainingClass = status.transactions_remaining > 10 ? 'text-success' : 
+                                 status.transactions_remaining > 0 ? 'text-warning' : 'text-danger';
+            
+            authContainer.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${status.email}</strong>
+                        <br>
+                        <small class="text-muted">${status.subscription_tier} plan</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="${remainingClass}">
+                            <strong>${status.transactions_remaining}</strong> transactions left
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary mt-1" onclick="manageSubscription()">
+                            ${status.subscription_tier === 'free_trial' ? 'Upgrade' : 'Manage'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            authContainer.innerHTML = `
+                <div class="text-center">
+                    <p class="mb-2">Sign in to get 100 free transaction categorizations</p>
+                    <button class="btn btn-primary btn-sm" onclick="signIn()">Sign In with Google</button>
+                </div>
+            `;
+        }
+    }
+    
+    function signIn() {
+        alert('Authentication will be integrated with AWS Cognito. For now, authentication is disabled for development.');
+    }
+    
+    async function manageSubscription() {
+        if (!currentUser || !currentUser.authenticated) {
+            signIn();
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/subscription/portal', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({
+                    return_url: window.location.href
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                window.open(data.portal_url, '_blank');
+            } else {
+                // Show upgrade options
+                showUpgradeDialog();
+            }
+        } catch (error) {
+            console.error('Error accessing customer portal:', error);
+            showUpgradeDialog();
+        }
+    }
+    
+    function showUpgradeDialog() {
+        const upgradeHtml = `
+            <div style="text-align: center; padding: 20px;">
+                <h3>Upgrade Your Plan</h3>
+                <p style="margin-bottom: 20px;">You've used your 100 free transactions. Choose a plan to continue:</p>
+                <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
+                    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
+                        <h4>Basic Plan</h4>
+                        <p><strong>$1/month</strong></p>
+                        <p>100 transactions monthly</p>
+                        <button class="btn btn-primary btn-sm" onclick="upgradeToBasic()">Choose Basic</button>
+                    </div>
+                    <div style="border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
+                        <h4>Premium Plan</h4>
+                        <p><strong>$5/month</strong></p>
+                        <p>500 transactions monthly</p>
+                        <button class="btn btn-primary btn-sm" onclick="upgradeToPremium()">Choose Premium</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        const upgradeWindow = window.open('', 'upgrade', 'width=500,height=400');
+        upgradeWindow.document.write(upgradeHtml);
+    }
+    
+    async function upgradeToBasic() {
+        await createCheckoutSession('basic');
+    }
+    
+    async function upgradeToPremium() {
+        await createCheckoutSession('premium');
+    }
+    
+    async function createCheckoutSession(planType) {
+        try {
+            const response = await fetch('/api/subscription/checkout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({
+                    plan_type: planType,
+                    success_url: window.location.href + '?success=1',
+                    cancel_url: window.location.href + '?cancelled=1'
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                window.open(data.checkout_url, '_blank');
+            } else {
+                alert('Error creating checkout session. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error creating checkout session:', error);
+            alert('Error creating checkout session. Please try again.');
+        }
+    }
 
     document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
     document.getElementById("btn-cancel-categorization").addEventListener("click", cancelCategorization);
@@ -311,8 +471,6 @@
         console.log("Connected to Flask WebSocket server");
     });
 
-    // Note: Socket.IO progress events are now handled by client-side batching
-    // Keep socket connection for error handling and future features
     socket.on("error", (data) => {
         console.error("Server error:", data.error);
         resetUI();
