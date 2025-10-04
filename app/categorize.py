@@ -43,7 +43,16 @@ def categorize_transaction_batch(
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
 
-    actual_batch_size = min(batch_size, MAX_TRANSACTIONS_TO_CATEGORIZE, len(unprocessed_transactions))
+    try:
+        batch_info_sheet = book.sheets["_batch_info"]
+        total_processed = int(batch_info_sheet.range("B4").value or 0)
+    except:
+        logging.error("Could not read total processed from _batch_info sheet")
+        total_processed = 0
+    
+    remaining_limit = MAX_TRANSACTIONS_TO_CATEGORIZE - total_processed
+    
+    actual_batch_size = min(batch_size, remaining_limit, len(unprocessed_transactions))
     batch_transactions = unprocessed_transactions[:actual_batch_size]
 
     if not batch_transactions:
@@ -94,6 +103,15 @@ def categorize_transaction_batch(
     categorized_transactions = [
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
+
+    # Update total_processed count in batch info sheet
+    try:
+        batch_info_sheet = book.sheets["_batch_info"]
+        new_total_processed = total_processed + len(batch_transactions)
+        batch_info_sheet.range("B4").value = new_total_processed
+        logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
+    except Exception as e:
+        logging.warning(f"Failed to update total_processed count: {e}")
 
     return update_categories_in_sheet_batch(
         book, categorized_transactions, uncategorized_transactions

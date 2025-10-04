@@ -142,6 +142,10 @@ def categorize_transactions_batch_init():
             temp_sheet.range("B2").value = 0
             temp_sheet.range("A3").value = "batch_size"
             temp_sheet.range("B3").value = TRANSACTION_BATCH_SIZE
+            temp_sheet.range("A4").value = "total_processed"
+            temp_sheet.range("B4").value = 0
+            temp_sheet.range("A5").value = "transaction_limit"
+            temp_sheet.range("B5").value = MAX_TRANSACTIONS_TO_CATEGORIZE
 
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")
