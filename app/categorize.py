@@ -104,7 +104,6 @@ def categorize_transaction_batch(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
-    # Update total_processed count in batch info sheet
     try:
         batch_info_sheet = book.sheets["_batch_info"]
         new_total_processed = total_processed + len(batch_transactions)
