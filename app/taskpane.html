@@ -378,20 +378,24 @@
             const batchSheet = workbook.worksheets.getItem("_batch_info");
             const totalRange = batchSheet.getRange("B1");
             const batchSizeRange = batchSheet.getRange("B3");
+            const transactionLimitRange = batchSheet.getRange("B5");
             
             totalRange.load("values");
             batchSizeRange.load("values");
+            transactionLimitRange.load("values");
             
             await context.sync();
             
             const totalTransactions = parseInt(totalRange.values[0][0]);
             const batchSize = parseInt(batchSizeRange.values[0][0]);
+            const TRANSACTION_LIMIT = parseInt(transactionLimitRange.values[0][0]);
             const totalBatches = Math.ceil(totalTransactions / batchSize);
+            
+            const displayTotal = totalTransactions >= TRANSACTION_LIMIT ? TRANSACTION_LIMIT : totalTransactions;
             
             console.log(`Processing ${totalTransactions} transactions in ${totalBatches} batches of ${batchSize}`);
             
-            // Initialize progress tracking
-            updateGlobalProgress(0, totalTransactions);
+            updateGlobalProgress(0, displayTotal);
             
             // Step 3: Process each batch
             for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
@@ -408,14 +412,23 @@
                     {include: "Transactions, Categories, _batch_info"}
                 );
                 
-                // Update progress after each batch
-                const processedSoFar = Math.min((batchNumber + 1) * batchSize, totalTransactions);
-                updateGlobalProgress(processedSoFar, totalTransactions);
+                const totalProcessedRange = batchSheet.getRange("B4");
+                totalProcessedRange.load("values");
+                await context.sync();
                 
-                console.log(`Batch ${batchNumber + 1} complete. Processed ${processedSoFar}/${totalTransactions} transactions`);
+                const actualProcessed = parseInt(totalProcessedRange.values[0][0] || 0);
+                const displayProcessed = Math.min(actualProcessed, displayTotal);
+                
+                updateGlobalProgress(displayProcessed, displayTotal);
+                
+                console.log(`Batch ${batchNumber + 1} complete. Processed ${actualProcessed} transactions (${displayProcessed}/${displayTotal} displayed)`);
+                
+                if (actualProcessed >= TRANSACTION_LIMIT) {
+                    console.log(`Reached ${TRANSACTION_LIMIT} transaction limit, stopping processing`);
+                    break;
+                }
             }
             
-            // Clean up temp sheet
             try {
                 batchSheet.delete();
                 await context.sync();
