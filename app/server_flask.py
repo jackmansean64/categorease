@@ -8,6 +8,9 @@ load_dotenv()
 os.environ["LANGCHAIN_TRACING_V2"] = "false" 
 os.environ["LANGSMITH_TRACING"] = "false"
 
+# Force sequential processing to avoid parallel threading issues
+os.environ["DISABLE_MULTI_THREADING"] = "true"
+
 # Enable faulthandler for debugging stuck workers
 import faulthandler
 import signal
@@ -75,6 +78,8 @@ logger.addHandler(console_handler)
 # Log configuration for debugging confirmation
 logging.info("Faulthandler enabled for worker timeout debugging - use 'sudo kill -USR2 <worker-pid>' to dump stack traces")
 logging.info(f"LangSmith tracing disabled: LANGCHAIN_TRACING_V2={os.environ.get('LANGCHAIN_TRACING_V2')}")
+logging.info(f"Multi-threading disabled: DISABLE_MULTI_THREADING={os.environ.get('DISABLE_MULTI_THREADING')}")
+logging.info("Using sync workers with sequential transaction processing")
 
 
 @socketio.on("connect")
