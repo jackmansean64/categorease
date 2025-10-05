@@ -14,6 +14,8 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 import os
+import faulthandler
+import time
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -21,6 +23,16 @@ UNKNOWN_CATEGORY = "Unknown"
 MAX_TRANSACTIONS_TO_CATEGORIZE = 100
 
 processed_transaction_ids = set()
+
+def dump_stack_trace_for_debugging(context: str):
+    """Dump stack trace with context for debugging worker timeouts"""
+    import sys
+    logging.warning(f"=== STACK TRACE DUMP: {context} ===")
+    try:
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        logging.warning(f"=== END STACK TRACE: {context} ===")
+    except Exception as e:
+        logging.error(f"Failed to dump stack trace: {e}")
 
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
@@ -66,6 +78,9 @@ def categorize_transaction_batch(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
     )
 
+    # Dump stack trace before starting processing
+    dump_stack_trace_for_debugging(f"Starting batch {batch_number} with {len(batch_transactions)} transactions")
+
     try:
         disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
         
@@ -80,6 +95,9 @@ def categorize_transaction_batch(
                 for transaction in batch_transactions
             ]
         else:
+            # Dump stack trace before parallel processing (potential blocking point)
+            dump_stack_trace_for_debugging(f"Starting parallel processing for batch {batch_number}")
+            
             categorized_transactions_and_costs = parallel_invoke_function(
                 function=model_categorize_transaction,
                 variable_args=batch_transactions,
@@ -196,6 +214,9 @@ def model_analyze_transaction(
     )
     # print("Formatted Prompt: " + formatted_prompt)
 
+    # Dump stack trace before LLM API call (most likely blocking point)
+    dump_stack_trace_for_debugging(f"About to call LLM API for transaction {transaction_id}")
+    
     analysis_response = chat_model.invoke(formatted_prompt)
     api_time = time.time() - api_start_time
     
