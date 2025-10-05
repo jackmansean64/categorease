@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 load_dotenv()
 # Note: Eventlet removed - now using sync workers with threading
 
+# Disable LangSmith telemetry to prevent background thread blocking
+os.environ["LANGCHAIN_TRACING_V2"] = "false" 
+os.environ["LANGSMITH_TRACING"] = "false"
+
 # Enable faulthandler for debugging stuck workers
 import faulthandler
 import signal
@@ -68,8 +72,9 @@ logger.setLevel(log_level)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# Log faulthandler activation for debugging confirmation
+# Log configuration for debugging confirmation
 logging.info("Faulthandler enabled for worker timeout debugging - use 'sudo kill -USR2 <worker-pid>' to dump stack traces")
+logging.info(f"LangSmith tracing disabled: LANGCHAIN_TRACING_V2={os.environ.get('LANGCHAIN_TRACING_V2')}")
 
 
 @socketio.on("connect")
