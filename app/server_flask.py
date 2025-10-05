@@ -6,6 +6,17 @@ load_dotenv()
 if os.getenv("DEBUG") != "True":
     eventlet.monkey_patch()
 
+# Enable faulthandler for debugging stuck workers
+import faulthandler
+import signal
+import sys
+
+# Enable automatic traceback on segfault/fatal errors
+faulthandler.enable(sys.stderr)
+
+# Register SIGUSR2 signal to dump stack traces of all threads on demand
+faulthandler.register(signal.SIGUSR2, all_threads=True)
+
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -58,6 +69,9 @@ logger = logging.getLogger()
 logger.setLevel(log_level)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+# Log faulthandler activation for debugging confirmation
+logging.info("Faulthandler enabled for worker timeout debugging - use 'sudo kill -USR2 <worker-pid>' to dump stack traces")
 
 
 @socketio.on("connect")
