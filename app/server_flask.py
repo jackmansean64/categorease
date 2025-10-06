@@ -12,9 +12,6 @@ os.environ["LANGCHAIN_CALLBACKS"] = "[]"
 os.environ["LANGCHAIN_PROJECT"] = ""
 os.environ["LANGSMITH_PROJECT"] = ""
 
-# Force sequential processing to avoid parallel threading issues
-os.environ["DISABLE_MULTI_THREADING"] = "true"
-
 # Enable faulthandler for debugging stuck workers
 import faulthandler
 import signal
