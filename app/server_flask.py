@@ -83,8 +83,6 @@ logger.addHandler(console_handler)
 logging.info("Faulthandler enabled for worker timeout debugging - use 'sudo kill -USR2 <worker-pid>' to dump stack traces")
 logging.info(f"LangSmith tracing disabled: LANGCHAIN_TRACING_V2={os.environ.get('LANGCHAIN_TRACING_V2')}")
 logging.info(f"LangSmith callbacks disabled: LANGCHAIN_CALLBACKS={os.environ.get('LANGCHAIN_CALLBACKS')}")
-logging.info(f"Multi-threading disabled: DISABLE_MULTI_THREADING={os.environ.get('DISABLE_MULTI_THREADING')}")
-logging.info("Using sync workers with sequential transaction processing")
 
 
 @socketio.on("connect")
