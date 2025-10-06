@@ -7,6 +7,10 @@ load_dotenv()
 # Disable LangSmith telemetry to prevent background thread blocking
 os.environ["LANGCHAIN_TRACING_V2"] = "false" 
 os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING"] = "false"
+os.environ["LANGCHAIN_CALLBACKS"] = "[]"
+os.environ["LANGCHAIN_PROJECT"] = ""
+os.environ["LANGSMITH_PROJECT"] = ""
 
 # Force sequential processing to avoid parallel threading issues
 os.environ["DISABLE_MULTI_THREADING"] = "true"
@@ -78,6 +82,7 @@ logger.addHandler(console_handler)
 # Log configuration for debugging confirmation
 logging.info("Faulthandler enabled for worker timeout debugging - use 'sudo kill -USR2 <worker-pid>' to dump stack traces")
 logging.info(f"LangSmith tracing disabled: LANGCHAIN_TRACING_V2={os.environ.get('LANGCHAIN_TRACING_V2')}")
+logging.info(f"LangSmith callbacks disabled: LANGCHAIN_CALLBACKS={os.environ.get('LANGCHAIN_CALLBACKS')}")
 logging.info(f"Multi-threading disabled: DISABLE_MULTI_THREADING={os.environ.get('DISABLE_MULTI_THREADING')}")
 logging.info("Using sync workers with sequential transaction processing")
 

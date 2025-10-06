@@ -108,7 +108,10 @@ def categorize_transaction_batch(
         
     except Exception as e:
         logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
-        socketio.emit("error", {"error": str(e)})
+        try:
+            socketio.emit("error", {"error": str(e)})
+        except:
+            logging.warning("Could not emit error to socketio (socketio may be disabled)")
         raise e
 
     for transaction in batch_transactions:
