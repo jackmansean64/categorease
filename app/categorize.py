@@ -190,32 +190,52 @@ def model_analyze_transaction(
     model_name: ModelName,
 ) -> Tuple[str, float]:
     import time
-    
+
     api_start_time = time.time()
     transaction_id = getattr(uncategorized_transaction, 'transaction_id', 'unknown')
-    
-    prompt_template = PromptTemplate.from_template(analysis_template)
 
-    formatted_prompt = prompt_template.format(
-        categories=TypeAdapter(List[Category]).dump_python(categories),
-        examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions),
-        transaction=uncategorized_transaction.model_dump(),
-    )
-    # print("Formatted Prompt: " + formatted_prompt)
+    # Simulate API delay to more closely match real conditions
+    time.sleep(10)
 
-    analysis_response = chat_model.invoke(formatted_prompt)
+    # Static response for debugging timeout issues
+    static_response = """Let's solve this step by step:
+
+1. Transaction Details:
+- Description: "Taylor swift toronto on"
+- Amount: -$73.68 (negative, so it's an expense)
+- Account: Scotia Momentum VISA Infinite
+
+2. Analyzing the Description:
+- "Taylor swift" suggests this is related to a concert or entertainment event
+- "toronto on" indicates the location of the event
+
+3. Reviewing Existing Categories:
+- I see relevant categories in the Entertainment group:
+  - "Entertainment"
+  - "Concerts and Shows"
+
+4. Examining Past Transactions:
+- I see other entertainment-related transactions like concerts and shows
+- The negative amount and event-related description strongly suggest this is a concert expense
+
+5. Confidence Assessment:
+- The description clearly indicates a concert
+- The category "Concerts and Shows" is a perfect match
+- I am >90% confident in this categorization
+
+6. Reasoning:
+- The transaction is a negative expense for a Taylor Swift concert
+- "Concerts and Shows" is the most precise and appropriate category
+
+<assigned_category>Concerts and Shows</assigned_category>"""
+
     api_time = time.time() - api_start_time
-    
-    logging.warning(f"LLM API call for transaction {transaction_id} completed in {api_time:.1f}s")
 
-    total_cost = calculate_total_prompt_cost(
-        analysis_response.response_metadata["usage"]["prompt_tokens"],
-        analysis_response.response_metadata["usage"]["completion_tokens"],
-        model_name,
-    )
-    # print(f"Total Cost: ${total_cost}")
+    logging.warning(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
 
-    return analysis_response.content, total_cost
+    total_cost = 0.00
+
+    return static_response, total_cost
 
 
 def parse_category_from_analysis(
