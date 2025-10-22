@@ -9,7 +9,6 @@
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         .header {
             display: flex;
@@ -434,23 +433,6 @@
         const progressText = document.querySelector('.progress-text');
         progressText.innerHTML = 'Categorizing...<span class="progress-count">0</span>/<span class="progress-total">0</span>';
     }
-
-    const SOCKET_URL = window.location.hostname === 'localhost'
-    ? "https://localhost:8000"
-    : "https://api.categorease.ca";
-
-    const socket = io(SOCKET_URL);
-
-    socket.on("connect", () => {
-        console.log("Connected to Flask WebSocket server");
-    });
-
-    // Note: Socket.IO progress events are now handled by client-side batching
-    // Keep socket connection for error handling and future features
-    socket.on("error", (data) => {
-        console.error("Server error:", data.error);
-        resetUI();
-    });
 </script>
 </body>
 

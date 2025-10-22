@@ -1,5 +1,4 @@
 from typing import List, Tuple
-from flask_socketio import SocketIO
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
@@ -77,7 +76,6 @@ def categorize_transaction_batch(
                     transaction=transaction,
                     categories=categories,
                     categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
-                    socketio=socketio,
                 )
                 for transaction in batch_transactions
             ]
@@ -87,12 +85,10 @@ def categorize_transaction_batch(
                 variable_args=batch_transactions,
                 categories=categories,
                 categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
-                socketio=socketio,
             )
 
     except Exception as e:
         logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
-        socketio.emit("error", {"error": str(e)})
         raise e
 
     for transaction in batch_transactions:
@@ -128,7 +124,6 @@ def model_categorize_transaction(
     transaction: Transaction,
     categories: List[Category],
     categorized_transactions: List[Transaction],
-    socketio: SocketIO,
 ) -> Tuple[CategorizedTransaction, float]:
     import time
     
