@@ -15,7 +15,6 @@ import xlwings as xw
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
-from flask_socketio import SocketIO
 from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
 TRANSACTION_BATCH_SIZE = 5
@@ -24,14 +23,6 @@ app = Flask(__name__)
 CORS(app)
 
 this_dir = Path(__file__).resolve().parent
-
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode="eventlet",
-    logger=True,
-    # engineio_logger=True
-)
 
 disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
 if disable_multi_threading:
@@ -58,23 +49,6 @@ logger = logging.getLogger()
 logger.setLevel(log_level)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-
-
-@socketio.on("connect")
-def handle_connect():
-    logging.info("Client connected")
-
-
-@socketio.on("disconnect")
-def handle_disconnect():
-    logging.info("Client disconnected")
-
-
-@socketio.on("test_connection")
-def handle_test_connection():
-    logging.info("Test connection received")
-    socketio.emit("test_response", {"message": "Test successful"})
-
 
 @app.route("/")
 def root():
@@ -163,7 +137,7 @@ def categorize_transactions_batch():
             batch_size = int(temp_sheet.range("B3").value)
 
             book = categorize_transaction_batch(
-                book, socketio, current_batch, batch_size
+                book, current_batch, batch_size
             )
 
             temp_sheet.range("B2").value = current_batch + 1
@@ -220,15 +194,11 @@ def xlwings_exception_handler(error):
 
 
 if __name__ == "__main__":
-    run_kwargs = {"host": "0.0.0.0", "port": 8000, "allow_unsafe_werkzeug": True}
-
-    use_local_certs = os.getenv("USE_LOCAL_CERTS") == "True"
-    if use_local_certs:
-        run_kwargs.update(
-            {
-                "certfile": str(this_dir.parent / "certs" / "localhost+2.pem"),
-                "keyfile": str(this_dir.parent / "certs" / "localhost+2-key.pem"),
-            }
-        )
-
-    socketio.run(app, **run_kwargs)
+    app.run(
+        port=8000,
+        debug=True,
+        ssl_context=(
+            this_dir.parent / "certs" / "localhost+2.pem",
+            this_dir.parent / "certs" / "localhost+2-key.pem",
+        ),
+    )
