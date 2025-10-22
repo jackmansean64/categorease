@@ -1,10 +1,7 @@
-import eventlet
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-if os.getenv("DEBUG") != "True":
-    eventlet.monkey_patch()
 
 import logging
 from logging.handlers import RotatingFileHandler
