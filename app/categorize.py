@@ -1,12 +1,8 @@
 from typing import List, Tuple
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.prompts import PromptTemplate
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
 from xlwings import Book
 import pandas as pd
-from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
 from prompt_templates import analysis_template, serialize_categories_template
 from toolkit.language_models.parallel_processing import parallel_invoke_function
@@ -123,8 +119,6 @@ def model_categorize_transaction(
     transaction_start_time = time.time()
     transaction_id = getattr(transaction, 'transaction_id', 'unknown')
     
-    chat_models = ChatModelsSetup()
-
     valid_categories = [category.category for category in categories] + [
         UNKNOWN_CATEGORY
     ]
@@ -137,7 +131,6 @@ def model_categorize_transaction(
             transaction,
             categories,
             categorized_transactions,
-            chat_models.claude_35_haiku_chat,
             ModelName.HAIKU_3_5,
         )
 
@@ -174,7 +167,6 @@ def model_analyze_transaction(
     uncategorized_transaction: Transaction,
     categories: List[Category],
     categorized_transactions: List[Transaction],
-    chat_model: BaseChatModel,
     model_name: ModelName,
 ) -> Tuple[str, float]:
     import time
