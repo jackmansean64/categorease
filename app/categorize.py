@@ -11,8 +11,8 @@ from bs4 import BeautifulSoup
 import os
 import threading
 import time
-import signal
 from functools import wraps
+import sys
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -35,42 +35,51 @@ class XlwingsTimeoutError(Exception):
     pass
 
 
-def xlwings_timeout_handler(signum, frame):
-    """Signal handler for xlwings timeout"""
-    raise XlwingsTimeoutError("xlwings operation timed out")
-
-
 T = TypeVar('T')
 
 def with_xlwings_timeout(timeout_seconds: int = 10, max_retries: int = 3):
     """
     Decorator to add timeout and retry logic to xlwings operations.
     If the operation takes longer than timeout_seconds, it will retry up to max_retries times.
+    Uses threading-based timeout for cross-platform compatibility.
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
             for attempt in range(max_retries):
-                # Set up the timeout signal
-                old_handler = signal.signal(signal.SIGALRM, xlwings_timeout_handler)
-                signal.alarm(timeout_seconds)
+                result_container = {}
+                exception_container = {}
 
-                try:
-                    result = func(*args, **kwargs)
-                    signal.alarm(0)  # Cancel the alarm
-                    return result
-                except XlwingsTimeoutError:
-                    signal.alarm(0)  # Cancel the alarm
-                    signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+                def target():
+                    try:
+                        result_container['result'] = func(*args, **kwargs)
+                    except Exception as e:
+                        exception_container['exception'] = e
 
+                thread = threading.Thread(target=target)
+                thread.daemon = True
+                thread.start()
+                thread.join(timeout=timeout_seconds)
+
+                if thread.is_alive():
+                    # Timeout occurred
                     if attempt < max_retries - 1:
                         logging.warning(f"xlwings operation in {func.__name__} timed out after {timeout_seconds}s, retrying ({attempt+1}/{max_retries})")
+                        continue
                     else:
                         logging.error(f"xlwings operation in {func.__name__} timed out after {max_retries} attempts, failing")
-                        raise
-                finally:
-                    signal.alarm(0)  # Ensure alarm is cancelled
-                    signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+                        raise XlwingsTimeoutError(f"Operation timed out after {max_retries} attempts")
+
+                # Check if an exception occurred in the thread
+                if 'exception' in exception_container:
+                    raise exception_container['exception']
+
+                # Return the result
+                if 'result' in result_container:
+                    return result_container['result']
+
+                # Should not reach here
+                raise RuntimeError("Unexpected state in timeout wrapper")
 
         return wrapper
     return decorator
