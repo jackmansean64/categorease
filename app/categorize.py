@@ -22,14 +22,6 @@ MAX_TRANSACTIONS_TO_CATEGORIZE = 100
 
 processed_transaction_ids = set()
 
-# Will be set by server_flask.py
-_xlwings_lock: Optional[threading.Lock] = None
-
-def set_xlwings_lock(lock: threading.Lock):
-    """Set the global xlwings lock from the Flask app"""
-    global _xlwings_lock
-    _xlwings_lock = lock
-
 
 class XlwingsTimeoutError(Exception):
     """Raised when an xlwings operation times out"""
@@ -109,16 +101,10 @@ def categorize_transaction_batch(
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
 
-    # Lock batch_info sheet read
+    # Read batch_info sheet
     try:
-        lock_start = time.time()
-        with _xlwings_lock:
-            lock_wait = time.time() - lock_start
-            if lock_wait > 0.1:
-                logging.warning(f"[LOCK] batch_info read waited {lock_wait:.3f}s for xlwings lock")
-
-            batch_info_sheet = book.sheets["_batch_info"]
-            total_processed = int(batch_info_sheet.range("B4").value or 0)
+        batch_info_sheet = book.sheets["_batch_info"]
+        total_processed = int(batch_info_sheet.range("B4").value or 0)
     except:
         logging.error("Could not read total processed from _batch_info sheet")
         total_processed = 0
@@ -177,17 +163,11 @@ def categorize_transaction_batch(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
-    # Lock batch_info sheet write
+    # Update batch_info sheet with total processed count
     try:
-        lock_start = time.time()
-        with _xlwings_lock:
-            lock_wait = time.time() - lock_start
-            if lock_wait > 0.1:
-                logging.warning(f"[LOCK] batch_info write waited {lock_wait:.3f}s for xlwings lock")
-
-            batch_info_sheet = book.sheets["_batch_info"]
-            new_total_processed = total_processed + len(batch_transactions)
-            batch_info_sheet.range("B4").value = new_total_processed
+        batch_info_sheet = book.sheets["_batch_info"]
+        new_total_processed = total_processed + len(batch_transactions)
+        batch_info_sheet.range("B4").value = new_total_processed
         logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
     except Exception as e:
         logging.warning(f"Failed to update total_processed count: {e}")
