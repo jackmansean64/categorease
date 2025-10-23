@@ -160,7 +160,7 @@ def model_categorize_transaction(
 
         if parsed_category.category != INVALID_CATEGORY:
             transaction_time = time.time() - transaction_start_time
-            logging.warning(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
+            logging.info(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
             return parsed_category, total_cost
         elif attempt == max_retries:
             parsed_category.category = UNKNOWN_CATEGORY
@@ -225,7 +225,7 @@ def model_analyze_transaction(
 
     api_time = time.time() - api_start_time
 
-    logging.warning(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
+    logging.info(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
 
     total_cost = 0.00
 
