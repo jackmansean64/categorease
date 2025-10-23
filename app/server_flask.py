@@ -13,13 +13,7 @@ import xlwings as xw
 from flask import Flask, Response, request, send_from_directory
 from flask.templating import render_template
 from flask_cors import CORS
-from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE, set_xlwings_lock
-
-# Global lock to serialize xlwings operations and prevent deadlocks
-xlwings_lock = threading.Lock()
-
-# Set the lock in the categorize module
-set_xlwings_lock(xlwings_lock)
+from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
 TRANSACTION_BATCH_SIZE = 5
 
@@ -106,32 +100,24 @@ def categorize_transactions_batch_init():
         total_uncategorized = len(uncategorized_transactions)
 
         # Store batch info in a hidden sheet that client can read
-        # Lock xlwings sheet operations
         try:
-            import time
-            lock_start = time.time()
-            with xlwings_lock:
-                lock_wait = time.time() - lock_start
-                if lock_wait > 0.1:
-                    logging.warning(f"[LOCK] batch_init waited {lock_wait:.3f}s for xlwings lock")
+            # Try to delete existing temp sheet
+            try:
+                book.sheets["_batch_info"].delete()
+            except:
+                pass
 
-                # Try to delete existing temp sheet
-                try:
-                    book.sheets["_batch_info"].delete()
-                except:
-                    pass
-
-                temp_sheet = book.sheets.add("_batch_info")
-                temp_sheet.range("A1").value = "total_uncategorized"
-                temp_sheet.range("B1").value = total_uncategorized
-                temp_sheet.range("A2").value = "current_batch"
-                temp_sheet.range("B2").value = 0
-                temp_sheet.range("A3").value = "batch_size"
-                temp_sheet.range("B3").value = TRANSACTION_BATCH_SIZE
-                temp_sheet.range("A4").value = "total_processed"
-                temp_sheet.range("B4").value = 0
-                temp_sheet.range("A5").value = "transaction_limit"
-                temp_sheet.range("B5").value = MAX_TRANSACTIONS_TO_CATEGORIZE
+            temp_sheet = book.sheets.add("_batch_info")
+            temp_sheet.range("A1").value = "total_uncategorized"
+            temp_sheet.range("B1").value = total_uncategorized
+            temp_sheet.range("A2").value = "current_batch"
+            temp_sheet.range("B2").value = 0
+            temp_sheet.range("A3").value = "batch_size"
+            temp_sheet.range("B3").value = TRANSACTION_BATCH_SIZE
+            temp_sheet.range("A4").value = "total_processed"
+            temp_sheet.range("B4").value = 0
+            temp_sheet.range("A5").value = "transaction_limit"
+            temp_sheet.range("B5").value = MAX_TRANSACTIONS_TO_CATEGORIZE
 
         except Exception as e:
             logging.error(f"Error creating batch info sheet: {e}")
@@ -150,16 +136,9 @@ def categorize_transactions_batch():
     logging.info(f"[TIMING] Book created at {time.time() - start_time:.3f}s")
 
     try:
-        # Lock batch info read
-        lock_start = time.time()
-        with xlwings_lock:
-            lock_wait = time.time() - lock_start
-            if lock_wait > 0.1:
-                logging.warning(f"[LOCK] batch endpoint read waited {lock_wait:.3f}s for xlwings lock")
-
-            temp_sheet = book.sheets["_batch_info"]
-            current_batch = int(temp_sheet.range("B2").value)
-            batch_size = int(temp_sheet.range("B3").value)
+        temp_sheet = book.sheets["_batch_info"]
+        current_batch = int(temp_sheet.range("B2").value)
+        batch_size = int(temp_sheet.range("B3").value)
         logging.info(f"[TIMING] Batch info read at {time.time() - start_time:.3f}s (batch {current_batch}, size {batch_size})")
 
         book = categorize_transaction_batch(
@@ -167,14 +146,7 @@ def categorize_transactions_batch():
         )
         logging.info(f"[TIMING] Categorization complete at {time.time() - start_time:.3f}s")
 
-        # Lock batch counter update
-        lock_start = time.time()
-        with xlwings_lock:
-            lock_wait = time.time() - lock_start
-            if lock_wait > 0.1:
-                logging.warning(f"[LOCK] batch counter update waited {lock_wait:.3f}s for xlwings lock")
-
-            temp_sheet.range("B2").value = current_batch + 1
+        temp_sheet.range("B2").value = current_batch + 1
         logging.info(f"[TIMING] Batch counter updated at {time.time() - start_time:.3f}s")
 
         result = book.json()
