@@ -527,7 +527,8 @@ def update_categories_in_sheet_batch(
                     break
 
         # Apply all updates with logging to identify hangs
-        logging.info(f"[TIMING] Sheet update: Applying {len(updates)} updates")
+        logging.info(f"[TIMING] Sheet update: Collected {len(updates)} updates to apply")
+        logging.info(f"[TIMING] Sheet update: Total rows in sheet: {len(rows)}")
         if updates:
             for idx, (row_idx, category) in enumerate(updates):
                 try:
