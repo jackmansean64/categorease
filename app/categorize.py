@@ -497,13 +497,16 @@ def update_categories_in_sheet_batch(
         logging.info(f"[TIMING] Sheet update: Headers retrieved at {time.time() - update_start:.3f}s")
 
         logging.info(f"[TIMING] Sheet update: Getting rows")
-        rows = sheet.tables[0].data_body_range.rows
+        # Read all row values into memory at once to avoid thousands of xlwings calls
+        rows_range = sheet.tables[0].data_body_range
+        rows_values = rows_range.value  # Read all data in one xlwings operation
         logging.info(f"[TIMING] Sheet update: Rows retrieved at {time.time() - update_start:.3f}s")
+        logging.info(f"[TIMING] Sheet update: Total rows in sheet: {len(rows_values) if rows_values else 0}")
 
         updated_count = 0
         logging.info(f"[TIMING] Sheet update: Starting row updates")
 
-        # Collect all updates first (outside xlwings operations)
+        # Collect all updates first (now using Python data, no xlwings operations)
         updates = []  # List of (row_index, category) tuples
         for transaction in categorized_transactions:
             if transaction.transaction_id is None:
@@ -516,19 +519,21 @@ def update_categories_in_sheet_batch(
             if transaction_id_str not in transaction_id_to_category:
                 continue
 
-            for i, row in enumerate(rows):
-                if str(row[transaction_id_col - 1].value) == transaction_id_str:
-                    if not row[category_col - 1].value:
-                        updates.append((i + 2, transaction.category))
-                        if logging.getLogger().isEnabledFor(logging.DEBUG):
-                            logging.debug(
-                                f"Will update row {i + 2} with category: {transaction.category}"
-                            )
-                    break
+            # Loop through Python list, not xlwings Range objects
+            if rows_values:
+                for i, row_data in enumerate(rows_values):
+                    # row_data is now a Python list, not an xlwings Range
+                    if str(row_data[transaction_id_col - 1]) == transaction_id_str:
+                        if not row_data[category_col - 1]:
+                            updates.append((i + 2, transaction.category))
+                            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                                logging.debug(
+                                    f"Will update row {i + 2} with category: {transaction.category}"
+                                )
+                        break
 
         # Apply all updates with logging to identify hangs
         logging.info(f"[TIMING] Sheet update: Collected {len(updates)} updates to apply")
-        logging.info(f"[TIMING] Sheet update: Total rows in sheet: {len(rows)}")
         if updates:
             for idx, (row_idx, category) in enumerate(updates):
                 try:
