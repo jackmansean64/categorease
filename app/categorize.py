@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable, TypeVar
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
 from xlwings import Book
@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 import os
 import threading
 import time
+import signal
+from functools import wraps
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -26,6 +28,53 @@ def set_xlwings_lock(lock: threading.Lock):
     """Set the global xlwings lock from the Flask app"""
     global _xlwings_lock
     _xlwings_lock = lock
+
+
+class XlwingsTimeoutError(Exception):
+    """Raised when an xlwings operation times out"""
+    pass
+
+
+def xlwings_timeout_handler(signum, frame):
+    """Signal handler for xlwings timeout"""
+    raise XlwingsTimeoutError("xlwings operation timed out")
+
+
+T = TypeVar('T')
+
+def with_xlwings_timeout(timeout_seconds: int = 10, max_retries: int = 3):
+    """
+    Decorator to add timeout and retry logic to xlwings operations.
+    If the operation takes longer than timeout_seconds, it will retry up to max_retries times.
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            for attempt in range(max_retries):
+                # Set up the timeout signal
+                old_handler = signal.signal(signal.SIGALRM, xlwings_timeout_handler)
+                signal.alarm(timeout_seconds)
+
+                try:
+                    result = func(*args, **kwargs)
+                    signal.alarm(0)  # Cancel the alarm
+                    return result
+                except XlwingsTimeoutError:
+                    signal.alarm(0)  # Cancel the alarm
+                    signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+
+                    if attempt < max_retries - 1:
+                        logging.warning(f"xlwings operation in {func.__name__} timed out after {timeout_seconds}s, retrying ({attempt+1}/{max_retries})")
+                    else:
+                        logging.error(f"xlwings operation in {func.__name__} timed out after {max_retries} attempts, failing")
+                        raise
+                finally:
+                    signal.alarm(0)  # Ensure alarm is cancelled
+                    signal.signal(signal.SIGALRM, old_handler)  # Restore old handler
+
+        return wrapper
+    return decorator
+
 
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
@@ -314,8 +363,13 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
             logging.warning(f"[LOCK] retrieve_transactions waited {lock_wait:.3f}s for xlwings lock")
 
         logging.debug("[LOCK] retrieve_transactions acquired xlwings lock")
-        transactions_sheet = book.sheets["Transactions"]
-        transactions_data = transactions_sheet.range("A1").expand().value
+
+        @with_xlwings_timeout()
+        def read_transactions_data():
+            transactions_sheet = book.sheets["Transactions"]
+            return transactions_sheet.range("A1").expand().value
+
+        transactions_data = read_transactions_data()
         logging.debug("[LOCK] retrieve_transactions releasing xlwings lock")
 
     # Process data outside the lock (parallel-safe)
@@ -354,8 +408,13 @@ def retrieve_categories(book: Book) -> List[Category]:
             logging.warning(f"[LOCK] retrieve_categories waited {lock_wait:.3f}s for xlwings lock")
 
         logging.debug("[LOCK] retrieve_categories acquired xlwings lock")
-        categories_sheet = book.sheets["Categories"]
-        categories_data = categories_sheet.range("A1").expand().value
+
+        @with_xlwings_timeout()
+        def read_categories_data():
+            categories_sheet = book.sheets["Categories"]
+            return categories_sheet.range("A1").expand().value
+
+        categories_data = read_categories_data()
         logging.debug("[LOCK] retrieve_categories releasing xlwings lock")
 
     # Process data outside the lock (parallel-safe)
@@ -490,16 +549,21 @@ def update_categories_in_sheet_batch(
 
         logging.debug("[LOCK] update_categories_in_sheet_batch acquired xlwings lock")
         logging.info(f"[TIMING] Sheet update: Getting sheet and headers")
-        sheet = book.sheets["Transactions"]
-        headers = sheet.range("A1").expand("right").value
+
+        @with_xlwings_timeout()
+        def read_sheet_data():
+            sheet = book.sheets["Transactions"]
+            headers = sheet.range("A1").expand("right").value
+            rows_range = sheet.tables[0].data_body_range
+            rows_values = rows_range.value
+            return sheet, headers, rows_values
+
+        sheet, headers, rows_values = read_sheet_data()
         transaction_id_col = headers.index("Transaction ID") + 1
         category_col = headers.index("Category") + 1
         logging.info(f"[TIMING] Sheet update: Headers retrieved at {time.time() - update_start:.3f}s")
 
         logging.info(f"[TIMING] Sheet update: Getting rows")
-        # Read all row values into memory at once to avoid thousands of xlwings calls
-        rows_range = sheet.tables[0].data_body_range
-        rows_values = rows_range.value  # Read all data in one xlwings operation
         logging.info(f"[TIMING] Sheet update: Rows retrieved at {time.time() - update_start:.3f}s")
         logging.info(f"[TIMING] Sheet update: Total rows in sheet: {len(rows_values) if rows_values else 0}")
 
@@ -535,15 +599,20 @@ def update_categories_in_sheet_batch(
         # Apply all updates with logging to identify hangs
         logging.info(f"[TIMING] Sheet update: Collected {len(updates)} updates to apply")
         if updates:
+            @with_xlwings_timeout()
+            def write_cell(row_idx, col, value):
+                sheet.cells(row_idx, col).value = value
+
             for idx, (row_idx, category) in enumerate(updates):
                 try:
                     logging.info(f"[TIMING] Sheet update: Writing row {row_idx} ({idx+1}/{len(updates)})")
-                    sheet.cells(row_idx, category_col).value = category
+                    write_cell(row_idx, category_col, category)
                     updated_count += 1
                     logging.info(f"[TIMING] Sheet update: Row {row_idx} written successfully")
+                except XlwingsTimeoutError:
+                    logging.error(f"Timeout writing to row {row_idx} after 3 attempts, skipping")
                 except Exception as e:
                     logging.error(f"Failed to update row {row_idx}: {e}")
-                    continue
 
         logging.info(f"[TIMING] Sheet update: Updates applied at {time.time() - update_start:.3f}s")
         logging.debug("[LOCK] update_categories_in_sheet_batch releasing xlwings lock")
