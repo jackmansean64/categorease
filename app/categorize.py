@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
 from xlwings import Book
@@ -9,6 +9,8 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 import os
+import threading
+import time
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -16,6 +18,14 @@ UNKNOWN_CATEGORY = "Unknown"
 MAX_TRANSACTIONS_TO_CATEGORIZE = 100
 
 processed_transaction_ids = set()
+
+# Will be set by server_flask.py
+_xlwings_lock: Optional[threading.Lock] = None
+
+def set_xlwings_lock(lock: threading.Lock):
+    """Set the global xlwings lock from the Flask app"""
+    global _xlwings_lock
+    _xlwings_lock = lock
 
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
@@ -42,9 +52,16 @@ def categorize_transaction_batch(
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
 
+    # Lock batch_info sheet read
     try:
-        batch_info_sheet = book.sheets["_batch_info"]
-        total_processed = int(batch_info_sheet.range("B4").value or 0)
+        lock_start = time.time()
+        with _xlwings_lock:
+            lock_wait = time.time() - lock_start
+            if lock_wait > 0.1:
+                logging.warning(f"[LOCK] batch_info read waited {lock_wait:.3f}s for xlwings lock")
+
+            batch_info_sheet = book.sheets["_batch_info"]
+            total_processed = int(batch_info_sheet.range("B4").value or 0)
     except:
         logging.error("Could not read total processed from _batch_info sheet")
         total_processed = 0
@@ -103,10 +120,17 @@ def categorize_transaction_batch(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
+    # Lock batch_info sheet write
     try:
-        batch_info_sheet = book.sheets["_batch_info"]
-        new_total_processed = total_processed + len(batch_transactions)
-        batch_info_sheet.range("B4").value = new_total_processed
+        lock_start = time.time()
+        with _xlwings_lock:
+            lock_wait = time.time() - lock_start
+            if lock_wait > 0.1:
+                logging.warning(f"[LOCK] batch_info write waited {lock_wait:.3f}s for xlwings lock")
+
+            batch_info_sheet = book.sheets["_batch_info"]
+            new_total_processed = total_processed + len(batch_transactions)
+            batch_info_sheet.range("B4").value = new_total_processed
         logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
     except Exception as e:
         logging.warning(f"Failed to update total_processed count: {e}")
@@ -282,8 +306,19 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
         "Transaction ID",
     ]
 
-    transactions_sheet = book.sheets["Transactions"]
-    transactions_data = transactions_sheet.range("A1").expand().value
+    # Lock xlwings operations to prevent concurrent access deadlock
+    lock_start = time.time()
+    with _xlwings_lock:
+        lock_wait = time.time() - lock_start
+        if lock_wait > 0.1:
+            logging.warning(f"[LOCK] retrieve_transactions waited {lock_wait:.3f}s for xlwings lock")
+
+        logging.debug("[LOCK] retrieve_transactions acquired xlwings lock")
+        transactions_sheet = book.sheets["Transactions"]
+        transactions_data = transactions_sheet.range("A1").expand().value
+        logging.debug("[LOCK] retrieve_transactions releasing xlwings lock")
+
+    # Process data outside the lock (parallel-safe)
     transactions_df = pd.DataFrame(transactions_data[1:], columns=transactions_data[0])
 
     transactions_df["Date"] = pd.to_datetime(transactions_df["Date"])
@@ -311,8 +346,19 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
 def retrieve_categories(book: Book) -> List[Category]:
     category_columns = ["Category", "Group", "Type"]
 
-    categories_sheet = book.sheets["Categories"]
-    categories_data = categories_sheet.range("A1").expand().value
+    # Lock xlwings operations to prevent concurrent access deadlock
+    lock_start = time.time()
+    with _xlwings_lock:
+        lock_wait = time.time() - lock_start
+        if lock_wait > 0.1:
+            logging.warning(f"[LOCK] retrieve_categories waited {lock_wait:.3f}s for xlwings lock")
+
+        logging.debug("[LOCK] retrieve_categories acquired xlwings lock")
+        categories_sheet = book.sheets["Categories"]
+        categories_data = categories_sheet.range("A1").expand().value
+        logging.debug("[LOCK] retrieve_categories releasing xlwings lock")
+
+    # Process data outside the lock (parallel-safe)
     categories_df = pd.DataFrame(categories_data[1:], columns=categories_data[0])
     for col in category_columns:
         if col not in categories_df.columns:
@@ -422,23 +468,12 @@ def update_categories_in_sheet_batch(
     all_uncategorized_transactions: List[Transaction],
 ) -> Book:
     """Update Excel sheet with categorized transactions from a specific batch"""
-    import time
     update_start = time.time()
 
     if not categorized_transactions:
         return book
 
-    logging.info(f"[TIMING] Sheet update: Getting sheet and headers")
-    sheet = book.sheets["Transactions"]
-    headers = sheet.range("A1").expand("right").value
-    transaction_id_col = headers.index("Transaction ID") + 1
-    category_col = headers.index("Category") + 1
-    logging.info(f"[TIMING] Sheet update: Headers retrieved at {time.time() - update_start:.3f}s")
-
-    logging.info(f"[TIMING] Sheet update: Getting rows")
-    rows = sheet.tables[0].data_body_range.rows
-    logging.info(f"[TIMING] Sheet update: Rows retrieved at {time.time() - update_start:.3f}s")
-
+    # Prepare lookup dictionary outside the lock (parallel-safe)
     transaction_id_to_category = {
         str(transaction.transaction_id): transaction.category
         for transaction in categorized_transactions
@@ -446,29 +481,50 @@ def update_categories_in_sheet_batch(
         and transaction.category != UNKNOWN_CATEGORY
     }
 
-    updated_count = 0
-    logging.info(f"[TIMING] Sheet update: Starting row updates")
-    for transaction in categorized_transactions:
-        if transaction.transaction_id is None:
-            logging.warning(
-                f"No transaction ID present for {transaction.description}, category can't be assigned."
-            )
-            continue
+    # Lock xlwings operations to prevent concurrent access deadlock
+    lock_start = time.time()
+    with _xlwings_lock:
+        lock_wait = time.time() - lock_start
+        if lock_wait > 0.1:
+            logging.warning(f"[LOCK] update_categories_in_sheet_batch waited {lock_wait:.3f}s for xlwings lock")
 
-        transaction_id_str = str(transaction.transaction_id)
-        if transaction_id_str not in transaction_id_to_category:
-            continue
+        logging.debug("[LOCK] update_categories_in_sheet_batch acquired xlwings lock")
+        logging.info(f"[TIMING] Sheet update: Getting sheet and headers")
+        sheet = book.sheets["Transactions"]
+        headers = sheet.range("A1").expand("right").value
+        transaction_id_col = headers.index("Transaction ID") + 1
+        category_col = headers.index("Category") + 1
+        logging.info(f"[TIMING] Sheet update: Headers retrieved at {time.time() - update_start:.3f}s")
 
-        for i, row in enumerate(rows):
-            if str(row[transaction_id_col - 1].value) == transaction_id_str:
-                if not row[category_col - 1].value:
-                    sheet.cells(i + 2, category_col).value = transaction.category
-                    updated_count += 1
-                    if logging.getLogger().isEnabledFor(logging.DEBUG):
-                        logging.debug(
-                            f"Updated row {i + 2} with category: {transaction.category}"
-                        )
-                break
+        logging.info(f"[TIMING] Sheet update: Getting rows")
+        rows = sheet.tables[0].data_body_range.rows
+        logging.info(f"[TIMING] Sheet update: Rows retrieved at {time.time() - update_start:.3f}s")
+
+        updated_count = 0
+        logging.info(f"[TIMING] Sheet update: Starting row updates")
+        for transaction in categorized_transactions:
+            if transaction.transaction_id is None:
+                logging.warning(
+                    f"No transaction ID present for {transaction.description}, category can't be assigned."
+                )
+                continue
+
+            transaction_id_str = str(transaction.transaction_id)
+            if transaction_id_str not in transaction_id_to_category:
+                continue
+
+            for i, row in enumerate(rows):
+                if str(row[transaction_id_col - 1].value) == transaction_id_str:
+                    if not row[category_col - 1].value:
+                        sheet.cells(i + 2, category_col).value = transaction.category
+                        updated_count += 1
+                        if logging.getLogger().isEnabledFor(logging.DEBUG):
+                            logging.debug(
+                                f"Updated row {i + 2} with category: {transaction.category}"
+                            )
+                    break
+
+        logging.debug("[LOCK] update_categories_in_sheet_batch releasing xlwings lock")
 
     logging.info(
         f"Batch update complete: {updated_count} transactions updated with categories"
