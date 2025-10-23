@@ -127,22 +127,41 @@ def categorize_transactions_batch_init():
 @app.route("/categorize-transactions-batch", methods=["POST"])
 def categorize_transactions_batch():
     """Process a specific batch of transactions"""
-    with xw.Book(json=request.json) as book:
-        try:
-            temp_sheet = book.sheets["_batch_info"]
-            current_batch = int(temp_sheet.range("B2").value)
-            batch_size = int(temp_sheet.range("B3").value)
+    import time
+    start_time = time.time()
 
-            book = categorize_transaction_batch(
-                book, current_batch, batch_size
-            )
+    logging.info(f"[TIMING] Request started")
+    book = xw.Book(json=request.json)
+    logging.info(f"[TIMING] Book created at {time.time() - start_time:.3f}s")
 
-            temp_sheet.range("B2").value = current_batch + 1
+    try:
+        temp_sheet = book.sheets["_batch_info"]
+        current_batch = int(temp_sheet.range("B2").value)
+        batch_size = int(temp_sheet.range("B3").value)
+        logging.info(f"[TIMING] Batch info read at {time.time() - start_time:.3f}s (batch {current_batch}, size {batch_size})")
 
-        except Exception as e:
-            logging.error(f"Error in batch processing: {e}")
+        book = categorize_transaction_batch(
+            book, current_batch, batch_size
+        )
+        logging.info(f"[TIMING] Categorization complete at {time.time() - start_time:.3f}s")
 
-        return book.json()
+        temp_sheet.range("B2").value = current_batch + 1
+        logging.info(f"[TIMING] Batch counter updated at {time.time() - start_time:.3f}s")
+
+        result = book.json()
+        logging.info(f"[TIMING] book.json() complete at {time.time() - start_time:.3f}s")
+
+    except Exception as e:
+        logging.error(f"[TIMING] Error at {time.time() - start_time:.3f}s: {e}")
+        book.close()
+        raise
+
+    logging.info(f"[TIMING] Calling book.close() at {time.time() - start_time:.3f}s")
+    book.close()
+    logging.info(f"[TIMING] book.close() complete at {time.time() - start_time:.3f}s")
+    logging.info(f"[TIMING] Request complete - Total time: {time.time() - start_time:.3f}s")
+
+    return result
 
 
 

@@ -29,10 +29,14 @@ def categorize_transaction_batch(
     book: Book, batch_number: int, batch_size: int
 ) -> Book:
     """Process a specific batch of transactions"""
+    import time
+    batch_start = time.time()
 
+    logging.info(f"[TIMING] Batch {batch_number} started")
     previously_categorized_transactions, uncategorized_transactions = (
         retrieve_transactions(book)
     )
+    logging.info(f"[TIMING] Batch {batch_number}: Transactions retrieved at {time.time() - batch_start:.3f}s")
 
     unprocessed_transactions = [
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
@@ -44,9 +48,9 @@ def categorize_transaction_batch(
     except:
         logging.error("Could not read total processed from _batch_info sheet")
         total_processed = 0
-    
+
     remaining_limit = MAX_TRANSACTIONS_TO_CATEGORIZE - total_processed
-    
+
     actual_batch_size = min(batch_size, remaining_limit, len(unprocessed_transactions))
     batch_transactions = unprocessed_transactions[:actual_batch_size]
 
@@ -56,6 +60,7 @@ def categorize_transaction_batch(
         return book
 
     categories = retrieve_categories(book)
+    logging.info(f"[TIMING] Batch {batch_number}: Categories retrieved at {time.time() - batch_start:.3f}s")
 
     logging.info(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
@@ -63,7 +68,8 @@ def categorize_transaction_batch(
 
     try:
         disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
-        
+
+        categorization_start = time.time()
         if disable_multi_threading:
             categorized_transactions_and_costs = [
                 model_categorize_transaction(
@@ -80,7 +86,8 @@ def categorize_transaction_batch(
                 categories=categories,
                 categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
             )
-        
+        logging.info(f"[TIMING] Batch {batch_number}: Categorization complete at {time.time() - batch_start:.3f}s (took {time.time() - categorization_start:.3f}s)")
+
     except Exception as e:
         logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
         raise e
@@ -104,9 +111,12 @@ def categorize_transaction_batch(
     except Exception as e:
         logging.warning(f"Failed to update total_processed count: {e}")
 
-    return update_categories_in_sheet_batch(
+    logging.info(f"[TIMING] Batch {batch_number}: Calling update_categories_in_sheet_batch at {time.time() - batch_start:.3f}s")
+    result = update_categories_in_sheet_batch(
         book, categorized_transactions, uncategorized_transactions
     )
+    logging.info(f"[TIMING] Batch {batch_number} complete at {time.time() - batch_start:.3f}s")
+    return result
 
 
 def model_categorize_transaction(
@@ -412,16 +422,22 @@ def update_categories_in_sheet_batch(
     all_uncategorized_transactions: List[Transaction],
 ) -> Book:
     """Update Excel sheet with categorized transactions from a specific batch"""
+    import time
+    update_start = time.time()
 
     if not categorized_transactions:
         return book
 
+    logging.info(f"[TIMING] Sheet update: Getting sheet and headers")
     sheet = book.sheets["Transactions"]
     headers = sheet.range("A1").expand("right").value
     transaction_id_col = headers.index("Transaction ID") + 1
     category_col = headers.index("Category") + 1
+    logging.info(f"[TIMING] Sheet update: Headers retrieved at {time.time() - update_start:.3f}s")
 
+    logging.info(f"[TIMING] Sheet update: Getting rows")
     rows = sheet.tables[0].data_body_range.rows
+    logging.info(f"[TIMING] Sheet update: Rows retrieved at {time.time() - update_start:.3f}s")
 
     transaction_id_to_category = {
         str(transaction.transaction_id): transaction.category
@@ -431,6 +447,7 @@ def update_categories_in_sheet_batch(
     }
 
     updated_count = 0
+    logging.info(f"[TIMING] Sheet update: Starting row updates")
     for transaction in categorized_transactions:
         if transaction.transaction_id is None:
             logging.warning(
@@ -456,4 +473,5 @@ def update_categories_in_sheet_batch(
     logging.info(
         f"Batch update complete: {updated_count} transactions updated with categories"
     )
+    logging.info(f"[TIMING] Sheet update: Complete at {time.time() - update_start:.3f}s")
     return book
