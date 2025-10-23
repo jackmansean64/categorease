@@ -9,6 +9,7 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 import os
+import faulthandler
 
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
@@ -16,6 +17,16 @@ UNKNOWN_CATEGORY = "Unknown"
 MAX_TRANSACTIONS_TO_CATEGORIZE = 100
 
 processed_transaction_ids = set()
+
+def dump_stack_trace_for_debugging(context: str):
+    """Dump stack trace with context for debugging worker timeouts"""
+    import sys
+    logging.warning(f"=== STACK TRACE DUMP: {context} ===")
+    try:
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        logging.warning(f"=== END STACK TRACE: {context} ===")
+    except Exception as e:
+        logging.error(f"Failed to dump stack trace: {e}")
 
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
@@ -61,6 +72,8 @@ def categorize_transaction_batch(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
     )
 
+    dump_stack_trace_for_debugging(f"Starting batch {batch_number} with {len(batch_transactions)} transactions")
+
     try:
         disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
         
@@ -104,6 +117,8 @@ def categorize_transaction_batch(
     except Exception as e:
         logging.warning(f"Failed to update total_processed count: {e}")
 
+    dump_stack_trace_for_debugging(f"Starting update_categories_in_sheet_batch")
+
     return update_categories_in_sheet_batch(
         book, categorized_transactions, uncategorized_transactions
     )
@@ -115,6 +130,7 @@ def model_categorize_transaction(
     categorized_transactions: List[Transaction],
 ) -> Tuple[CategorizedTransaction, float]:
     import time
+    dump_stack_trace_for_debugging(f"Categorizing transaction {transaction.transaction_id}")
     
     transaction_start_time = time.time()
     transaction_id = getattr(transaction, 'transaction_id', 'unknown')
@@ -158,6 +174,7 @@ def model_categorize_transaction(
                 f"Attempt {attempt + 1} failed for transaction {transaction_id}, retrying..."
             )
 
+    dump_stack_trace_for_debugging(f"Finished categorizing transaction {transaction.transaction_id}")
     transaction_time = time.time() - transaction_start_time
     logging.warning(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
     return parsed_category, total_cost
@@ -456,4 +473,5 @@ def update_categories_in_sheet_batch(
     logging.info(
         f"Batch update complete: {updated_count} transactions updated with categories"
     )
+    dump_stack_trace_for_debugging(f"Batch update complete, excel transactions updated with categories")
     return book
