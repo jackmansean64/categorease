@@ -502,6 +502,9 @@ def update_categories_in_sheet_batch(
 
         updated_count = 0
         logging.info(f"[TIMING] Sheet update: Starting row updates")
+
+        # Collect all updates first (outside xlwings operations)
+        updates = []  # List of (row_index, category) tuples
         for transaction in categorized_transactions:
             if transaction.transaction_id is None:
                 logging.warning(
@@ -516,14 +519,27 @@ def update_categories_in_sheet_batch(
             for i, row in enumerate(rows):
                 if str(row[transaction_id_col - 1].value) == transaction_id_str:
                     if not row[category_col - 1].value:
-                        sheet.cells(i + 2, category_col).value = transaction.category
-                        updated_count += 1
+                        updates.append((i + 2, transaction.category))
                         if logging.getLogger().isEnabledFor(logging.DEBUG):
                             logging.debug(
-                                f"Updated row {i + 2} with category: {transaction.category}"
+                                f"Will update row {i + 2} with category: {transaction.category}"
                             )
                     break
 
+        # Apply all updates with logging to identify hangs
+        logging.info(f"[TIMING] Sheet update: Applying {len(updates)} updates")
+        if updates:
+            for idx, (row_idx, category) in enumerate(updates):
+                try:
+                    logging.info(f"[TIMING] Sheet update: Writing row {row_idx} ({idx+1}/{len(updates)})")
+                    sheet.cells(row_idx, category_col).value = category
+                    updated_count += 1
+                    logging.info(f"[TIMING] Sheet update: Row {row_idx} written successfully")
+                except Exception as e:
+                    logging.error(f"Failed to update row {row_idx}: {e}")
+                    continue
+
+        logging.info(f"[TIMING] Sheet update: Updates applied at {time.time() - update_start:.3f}s")
         logging.debug("[LOCK] update_categories_in_sheet_batch releasing xlwings lock")
 
     logging.info(
