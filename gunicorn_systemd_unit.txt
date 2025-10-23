@@ -7,8 +7,11 @@ Group=www-data
 WorkingDirectory=/home/ubuntu/flask-app/categorease/app
 ExecStart=/home/ubuntu/flask-app/venv/bin/gunicorn \
           --bind 0.0.0.0:8000 \
-          --worker-class eventlet \
-          -w 1 \
+          --worker-class sync \
+          --workers 4 \
+          --access-logfile - \
+          --access-logformat '%%(t)s pid=%%(p)s method=%%(m)s path="%%(U)s%%(q)s" status=%%(s)s bytes=%%(B)s dur=%%(L)s ua="%%(a)s")' \
+          --timeout 60 --graceful-timeout 45 --keep-alive 5 \
           server_flask:app
 Restart=always
 [Install]
