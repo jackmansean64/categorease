@@ -12,6 +12,7 @@ from toolkit.language_models.parallel_processing import parallel_invoke_function
 import logging
 from bs4 import BeautifulSoup
 import os
+from mock_llm_response import MOCK_LLM_RESPONSE
 
 logger = logging.getLogger(__name__)
 
@@ -190,45 +191,33 @@ def model_analyze_transaction(
     api_start_time = time.time()
     transaction_id = getattr(uncategorized_transaction, 'transaction_id', 'unknown')
 
-    # Static response for debugging timeout issues
-    static_response = """Let's solve this step by step:
+    use_mock_llm = os.getenv("USE_MOCK_LLM", "false").lower() == "true"
 
-1. Transaction Details:
-- Description: "Taylor swift toronto on"
-- Amount: -$73.68 (negative, so it's an expense)
-- Account: Scotia Momentum VISA Infinite
+    if use_mock_llm:
+        api_time = time.time() - api_start_time
+        logger.warning(f"MOCK LLM response for transaction {transaction_id} returned in {api_time:.1f}s")
+        return MOCK_LLM_RESPONSE, 0.00
 
-2. Analyzing the Description:
-- "Taylor swift" suggests this is related to a concert or entertainment event
-- "toronto on" indicates the location of the event
+    prompt_template = PromptTemplate.from_template(analysis_template)
 
-3. Reviewing Existing Categories:
-- I see relevant categories in the Entertainment group:
-  - "Entertainment"
-  - "Concerts and Shows"
+    formatted_prompt = prompt_template.format(
+        categories=TypeAdapter(List[Category]).dump_python(categories),
+        examples=TypeAdapter(List[Transaction]).dump_python(categorized_transactions),
+        transaction=uncategorized_transaction.model_dump(),
+    )
 
-4. Examining Past Transactions:
-- I see other entertainment-related transactions like concerts and shows
-- The negative amount and event-related description strongly suggest this is a concert expense
-
-5. Confidence Assessment:
-- The description clearly indicates a concert
-- The category "Concerts and Shows" is a perfect match
-- I am >90% confident in this categorization
-
-6. Reasoning:
-- The transaction is a negative expense for a Taylor Swift concert
-- "Concerts and Shows" is the most precise and appropriate category
-
-<assigned_category>Concerts and Shows</assigned_category>"""
-
+    analysis_response = chat_model.invoke(formatted_prompt)
     api_time = time.time() - api_start_time
 
-    logger.warning(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
+    logger.warning(f"LLM API call for transaction {transaction_id} completed in {api_time:.1f}s")
 
-    total_cost = 0.00
+    total_cost = calculate_total_prompt_cost(
+        analysis_response.response_metadata["usage"]["prompt_tokens"],
+        analysis_response.response_metadata["usage"]["completion_tokens"],
+        model_name,
+    )
 
-    return static_response, total_cost
+    return analysis_response.content, total_cost
 
 
 def parse_category_from_analysis(
