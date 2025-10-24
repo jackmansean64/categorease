@@ -210,7 +210,14 @@ app.jinja_loader = loader
 # This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
-    return send_from_directory(this_dir, path)
+    from werkzeug.exceptions import NotFound
+    try:
+        return send_from_directory(this_dir, path)
+    except NotFound:
+        # Silently ignore common missing files like favicon.ico
+        if path not in ['favicon.ico']:
+            logging.warning(f"File not found: {path}")
+        return Response("Not found", status=404)
 
 
 @app.errorhandler(Exception)
