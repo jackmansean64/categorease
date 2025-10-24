@@ -160,7 +160,7 @@ def model_categorize_transaction(
 
         if parsed_category.category != INVALID_CATEGORY:
             transaction_time = time.time() - transaction_start_time
-            logger.warning(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
+            logger.info(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
             return parsed_category, total_cost
         elif attempt == max_retries:
             parsed_category.category = UNKNOWN_CATEGORY
@@ -170,12 +170,12 @@ def model_categorize_transaction(
             )
             return parsed_category, total_cost
         else:
-            logger.info(
+            logger.warning(
                 f"Attempt {attempt + 1} failed for transaction {transaction_id}, retrying..."
             )
 
     transaction_time = time.time() - transaction_start_time
-    logger.warning(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
+    logger.info(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
     return parsed_category, total_cost
 
 
@@ -195,7 +195,7 @@ def model_analyze_transaction(
 
     if use_mock_llm:
         api_time = time.time() - api_start_time
-        logger.warning(f"MOCK LLM response for transaction {transaction_id} returned in {api_time:.1f}s")
+        logger.info(f"MOCK LLM response for transaction {transaction_id} returned in {api_time:.1f}s")
         return MOCK_LLM_RESPONSE, 0.00
 
     prompt_template = PromptTemplate.from_template(analysis_template)
@@ -209,7 +209,7 @@ def model_analyze_transaction(
     analysis_response = chat_model.invoke(formatted_prompt)
     api_time = time.time() - api_start_time
 
-    logger.warning(f"LLM API call for transaction {transaction_id} completed in {api_time:.1f}s")
+    logger.info(f"LLM API call for transaction {transaction_id} completed in {api_time:.1f}s")
 
     total_cost = calculate_total_prompt_cost(
         analysis_response.response_metadata["usage"]["prompt_tokens"],
