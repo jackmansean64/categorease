@@ -6,15 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CategorEase</title>
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-    <!--    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.debug.js"></script>-->
-    <!--    <script type="text/javascript"-->
-    <!--            src="https://cdn.jsdelivr.net/gh/xlwings/xlwings@0.33.3/xlwingsjs/dist/xlwings.js"></script>-->
-    <script type="text/javascript"
-            src="xlwings.js"></script>
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/xlwings/bootstrap-xlwings@5.2.3-2/dist/bootstrap-xlwings.min.css"
           integrity="sha384-TZ8CaOSXLBEEL73Aw1vX6a/2YP7QHdiuilF2C8Put8X81F3FzyRgt9ba77CMKAXq" crossorigin="anonymous">
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         .header {
             display: flex;
@@ -66,12 +60,19 @@
             background-color: #dc3545;
             border-color: #dc3545;
             color: #fff;
-            margin-top: 10px;
         }
 
         .btn-cancel:hover {
             background-color: #c82333;
             border-color: #bd2130;
+        }
+
+        .confirmation-container .btn-cancel {
+            margin-top: 0;
+        }
+
+        .progress-container .btn-cancel {
+            margin-top: 10px;
         }
 
         .progress-container {
@@ -132,6 +133,13 @@
         <button class="btn btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions
         </button>
     </div>
+    <div class="confirmation-container" style="display: none; margin: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+        <div class="confirmation-message" style="margin-bottom: 15px; font-size: 1rem; text-align: center;"></div>
+        <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
+            <button class="btn btn-categorize" id="btn-confirm-yes" type="button">Yes</button>
+            <button class="btn btn-cancel" id="btn-confirm-no" type="button">No</button>
+        </div>
+    </div>
     <div class="progress-container">
         <div class="progress">
             <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0"
@@ -148,42 +156,141 @@
 <script>
     Office.onReady(function (info) {
     });
-    // Office.onReady(() => {
-    //     OfficeExtension.config.extendedErrorLogging = true;
-    //     // Other code...
-    // });
-
-    globalThis.getAuth = async function () {
-        return ""
-    };
 
     document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
     document.getElementById("btn-cancel-categorization").addEventListener("click", cancelCategorization);
-    
+
     let categorizationInProgress = false;
     let cancellationRequested = false;
 
-    function categorizeTransactionsPrompt() {
-        socket.emit('test_connection');
-        xlwings.runPython(
-            window.location.origin + "/categorize-transactions-prompt",
-            {include: "Transactions, Categories"}
-        );
+    async function readSheetData(sheetName) {
+        return await Excel.run(async (context) => {
+            const sheet = context.workbook.worksheets.getItem(sheetName);
+            const range = sheet.getUsedRange();
+            range.load("values");
+            await context.sync();
+            return range.values;
+        });
     }
 
-    async function categorizeTransactions(arg) {
-        if (arg === "ok") {
-            categorizationInProgress = true;
-            cancellationRequested = false; // Reset cancellation flag
-            document.querySelector('.progress-container').style.display = 'block';
-            document.getElementById('btn-categorize-transactions').style.display = 'none';
-            
-            try {
-                await categorizeTransactionsBatched();
-            } catch (error) {
-                console.error("Categorization failed:", error);
-                resetUI();
+    async function writeCategorizedTransactions(categorizedTransactions) {
+        await Excel.run(async (context) => {
+            const sheet = context.workbook.worksheets.getItem("Transactions");
+            const range = sheet.getUsedRange();
+            range.load("values");
+            await context.sync();
+
+            const headers = range.values[0];
+            const transactionIdCol = headers.indexOf("Transaction ID");
+            const categoryCol = headers.indexOf("Category");
+
+            if (transactionIdCol === -1 || categoryCol === -1) {
+                throw new Error("Required columns not found");
             }
+
+            const categoryMap = new Map();
+            categorizedTransactions.forEach(t => {
+                categoryMap.set(String(t.transaction_id), t.category);
+            });
+
+            let updatedCount = 0;
+            for (let i = 1; i < range.values.length; i++) {
+                const transactionId = String(range.values[i][transactionIdCol]);
+                if (categoryMap.has(transactionId) && !range.values[i][categoryCol]) {
+                    const cell = sheet.getCell(i, categoryCol);
+                    cell.values = [[categoryMap.get(transactionId)]];
+                    updatedCount++;
+                }
+            }
+
+            await context.sync();
+            console.log(`Updated ${updatedCount} transactions with categories`);
+        });
+    }
+
+    function showConfirmation(message) {
+        return new Promise((resolve) => {
+            const confirmContainer = document.querySelector('.confirmation-container');
+            const confirmMessage = document.querySelector('.confirmation-message');
+            const btnYes = document.getElementById('btn-confirm-yes');
+            const btnNo = document.getElementById('btn-confirm-no');
+            const btnCategorize = document.getElementById('btn-categorize-transactions');
+
+            confirmMessage.textContent = message;
+            confirmContainer.style.display = 'block';
+            btnCategorize.style.display = 'none';
+
+            const handleYes = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            const handleNo = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            const cleanup = () => {
+                btnYes.removeEventListener('click', handleYes);
+                btnNo.removeEventListener('click', handleNo);
+                confirmContainer.style.display = 'none';
+                btnCategorize.style.display = 'inline-flex';
+            };
+
+            btnYes.addEventListener('click', handleYes);
+            btnNo.addEventListener('click', handleNo);
+        });
+    }
+
+    async function categorizeTransactionsPrompt() {
+        try {
+            const transactionsData = await readSheetData("Transactions");
+            const categoriesData = await readSheetData("Categories");
+
+            const response = await fetch(window.location.origin + "/categorize-transactions-prompt", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    transactions: transactionsData,
+                    categories: categoriesData
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.num_uncategorized === 0) {
+                await showConfirmation("No uncategorized transactions found.");
+                return;
+            }
+
+            let message;
+            if (result.exceeds_limit) {
+                message = `You have ${result.num_uncategorized} uncategorized transactions. Only the first ${result.limit} will be processed. Continue?`;
+            } else {
+                message = `Categorize ${result.num_uncategorized} transactions?`;
+            }
+
+            const confirmed = await showConfirmation(message);
+            if (confirmed) {
+                await categorizeTransactions();
+            }
+        } catch (error) {
+            console.error("Error checking transactions:", error);
+            await showConfirmation("Error: " + error.message);
+        }
+    }
+
+    async function categorizeTransactions() {
+        categorizationInProgress = true;
+        cancellationRequested = false;
+        document.querySelector('.progress-container').style.display = 'block';
+        document.getElementById('btn-categorize-transactions').style.display = 'none';
+
+        try {
+            await categorizeTransactionsBatched();
+        } catch (error) {
+            console.error("Categorization failed:", error);
+            resetUI();
         }
     }
     
@@ -205,80 +312,86 @@
 
     async function categorizeTransactionsBatched() {
         console.log("Starting batch processing...");
-        
-        // Step 1: Initialize batch processing
-        await xlwings.runPython(
-            window.location.origin + "/categorize-transactions-batch-init",
-            {include: "Transactions, Categories"}
-        );
-        
-        // Step 2: Get the Excel workbook to read batch info
-        await Excel.run(async (context) => {
-            const workbook = context.workbook;
-            const batchSheet = workbook.worksheets.getItem("_batch_info");
-            const totalRange = batchSheet.getRange("B1");
-            const batchSizeRange = batchSheet.getRange("B3");
-            const transactionLimitRange = batchSheet.getRange("B5");
-            
-            totalRange.load("values");
-            batchSizeRange.load("values");
-            transactionLimitRange.load("values");
-            
-            await context.sync();
-            
-            const totalTransactions = parseInt(totalRange.values[0][0]);
-            const batchSize = parseInt(batchSizeRange.values[0][0]);
-            const TRANSACTION_LIMIT = parseInt(transactionLimitRange.values[0][0]);
+
+        try {
+            const transactionsData = await readSheetData("Transactions");
+            const categoriesData = await readSheetData("Categories");
+
+            const initResponse = await fetch(window.location.origin + "/categorize-transactions-batch-init", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    transactions: transactionsData,
+                    categories: categoriesData
+                })
+            });
+
+            const initResult = await initResponse.json();
+            const totalTransactions = initResult.total_uncategorized;
+            const batchSize = initResult.batch_size;
+            const TRANSACTION_LIMIT = initResult.transaction_limit;
             const totalBatches = Math.ceil(totalTransactions / batchSize);
-            
+
             const displayTotal = totalTransactions >= TRANSACTION_LIMIT ? TRANSACTION_LIMIT : totalTransactions;
-            
+
             console.log(`Processing ${totalTransactions} transactions in ${totalBatches} batches of ${batchSize}`);
-            
+
             updateGlobalProgress(0, displayTotal);
-            
-            // Step 3: Process each batch
+
+            let totalProcessed = 0;
+
             for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
                 if (cancellationRequested) {
                     console.log("Cancellation requested, stopping processing");
                     resetUI();
                     return;
                 }
-                
+
                 console.log(`Processing batch ${batchNumber + 1}/${totalBatches}`);
-                
-                await xlwings.runPython(
-                    window.location.origin + "/categorize-transactions-batch",
-                    {include: "Transactions, Categories, _batch_info"}
-                );
-                
-                const totalProcessedRange = batchSheet.getRange("B4");
-                totalProcessedRange.load("values");
-                await context.sync();
-                
-                const actualProcessed = parseInt(totalProcessedRange.values[0][0] || 0);
-                const displayProcessed = Math.min(actualProcessed, displayTotal);
-                
+
+                const currentTransactionsData = await readSheetData("Transactions");
+                const currentCategoriesData = await readSheetData("Categories");
+
+                const batchResponse = await fetch(window.location.origin + "/categorize-transactions-batch", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        transactions: currentTransactionsData,
+                        categories: currentCategoriesData,
+                        batch_number: batchNumber,
+                        batch_size: batchSize
+                    })
+                });
+
+                const batchResult = await batchResponse.json();
+
+                if (batchResult.error) {
+                    throw new Error(batchResult.error);
+                }
+
+                if (batchResult.categorized_transactions && batchResult.categorized_transactions.length > 0) {
+                    await writeCategorizedTransactions(batchResult.categorized_transactions);
+                }
+
+                totalProcessed = batchResult.total_processed;
+                const displayProcessed = Math.min(totalProcessed, displayTotal);
+
                 updateGlobalProgress(displayProcessed, displayTotal);
-                
-                console.log(`Batch ${batchNumber + 1} complete. Processed ${actualProcessed} transactions (${displayProcessed}/${displayTotal} displayed)`);
-                
-                if (actualProcessed >= TRANSACTION_LIMIT) {
-                    console.log(`Reached ${TRANSACTION_LIMIT} transaction limit, stopping processing`);
+
+                console.log(`Batch ${batchNumber + 1} complete. Processed ${totalProcessed} transactions (${displayProcessed}/${displayTotal} displayed)`);
+
+                if (batchResult.completed) {
+                    console.log("Processing complete!");
                     break;
                 }
             }
-            
-            try {
-                batchSheet.delete();
-                await context.sync();
-            } catch (e) {
-                console.log("Couldn't delete temp sheet:", e);
-            }
-            
+
             console.log("All batches complete!");
             resetUI();
-        });
+        } catch (error) {
+            console.error("Batch processing failed:", error);
+            resetUI();
+        }
     }
 
     function updateGlobalProgress(current, total) {
@@ -313,25 +426,6 @@
         const progressText = document.querySelector('.progress-text');
         progressText.innerHTML = 'Categorizing...<span class="progress-count">0</span>/<span class="progress-total">0</span>';
     }
-
-    const SOCKET_URL = window.location.hostname === 'localhost'
-    ? "https://localhost:8000"
-    : "https://api.categorease.ca";
-
-    const socket = io(SOCKET_URL);
-
-    socket.on("connect", () => {
-        console.log("Connected to Flask WebSocket server");
-    });
-
-    // Note: Socket.IO progress events are now handled by client-side batching
-    // Keep socket connection for error handling and future features
-    socket.on("error", (data) => {
-        console.error("Server error:", data.error);
-        resetUI();
-    });
-
-    xlwings.registerCallback(categorizeTransactions);
 </script>
 </body>
 
