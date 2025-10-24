@@ -111,14 +111,16 @@ def categorize_transactions_batch_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
-
-
 # Serve static files (HTML and icons)
 # This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
     logger.debug(f"Static file request for: {path}")
-    return send_from_directory(this_dir, path)
+    try:
+        return send_from_directory(this_dir, path)
+    except Exception as e:
+        logger.error(f"Failed to serve file '{path}': {e}")
+        raise
 
 
 @app.errorhandler(Exception)
