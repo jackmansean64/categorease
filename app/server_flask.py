@@ -20,10 +20,6 @@ CORS(app)
 
 this_dir = Path(__file__).resolve().parent
 
-disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
-if disable_multi_threading:
-    logging.info("Multi-threading disabled, processing transactions synchronously")
-
 env_log_level = os.getenv("LOG_LEVEL", "INFO")
 log_level = getattr(logging, env_log_level.upper(), logging.INFO)
 
@@ -41,15 +37,15 @@ formatter = logging.Formatter(
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
-# Set root logger level so logging.info() calls work, but don't add handlers to it
-logging.root.setLevel(log_level)
+# Get logger for this module
+logger = logging.getLogger(__name__)
+logger.setLevel(log_level)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
-# Only add handlers to your app's loggers - this prevents third-party logs from appearing
-logging.getLogger('server_flask').addHandler(file_handler)
-logging.getLogger('server_flask').addHandler(console_handler)
-
-logging.getLogger('categorize').addHandler(file_handler)
-logging.getLogger('categorize').addHandler(console_handler)
+disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
+if disable_multi_threading:
+    logger.info("Multi-threading disabled, processing transactions synchronously")
 
 @app.route("/")
 def root():
@@ -100,7 +96,7 @@ def categorize_transactions_batch_endpoint():
         batch_number = data.get('batch_number', 0)
         batch_size = data.get('batch_size', TRANSACTION_BATCH_SIZE)
 
-        logging.info(f"Processing batch {batch_number} with {len(transactions_data)} total transactions")
+        logger.info(f"Processing batch {batch_number} with {len(transactions_data)} total transactions")
 
         categorized_results = categorize_transaction_batch(
             transactions_data=transactions_data,
@@ -112,7 +108,7 @@ def categorize_transactions_batch_endpoint():
         return jsonify(categorized_results)
 
     except Exception as e:
-        logging.error(f"Error in batch processing: {e}", exc_info=True)
+        logger.error(f"Error in batch processing: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -122,13 +118,13 @@ def categorize_transactions_batch_endpoint():
 # This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
-    logging.debug(f"Static file request for: {path}")
+    logger.debug(f"Static file request for: {path}")
     return send_from_directory(this_dir, path)
 
 
 @app.errorhandler(Exception)
 def exception_handler(error):
-    logging.error(f"Unhandled exception: {error}", exc_info=True)
+    logger.error(f"Unhandled exception: {error}", exc_info=True)
     return Response(str(error), status=500)
 
 

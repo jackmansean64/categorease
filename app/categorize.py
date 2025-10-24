@@ -13,6 +13,8 @@ import logging
 from bs4 import BeautifulSoup
 import os
 
+logger = logging.getLogger(__name__)
+
 TRANSACTION_HISTORY_LENGTH = 150
 INVALID_CATEGORY = "Invalid"
 UNKNOWN_CATEGORY = "Unknown"
@@ -23,7 +25,7 @@ processed_transaction_ids = set()
 def reset_categorization_session():
     """Reset the in-memory tracking of processed transactions for a new categorization session"""
     processed_transaction_ids.clear()
-    logging.info(
+    logger.info(
         "Categorization session reset - all transactions can be reprocessed"
     )
 
@@ -52,7 +54,7 @@ def categorize_transaction_batch(
     batch_transactions = unprocessed_transactions[:actual_batch_size]
 
     if not batch_transactions:
-        logging.info(f"Batch {batch_number}: No unprocessed transactions remaining")
+        logger.info(f"Batch {batch_number}: No unprocessed transactions remaining")
         reset_categorization_session()
         return {
             'categorized_transactions': [],
@@ -62,7 +64,7 @@ def categorize_transaction_batch(
 
     categories = parse_categories_data(categories_data)
 
-    logging.info(
+    logger.info(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
     )
 
@@ -87,7 +89,7 @@ def categorize_transaction_batch(
             )
 
     except Exception as e:
-        logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
+        logger.error(f"Batch {batch_number}: Processing failed with error: {e}")
         raise e
 
     for transaction in batch_transactions:
@@ -95,14 +97,14 @@ def categorize_transaction_batch(
             processed_transaction_ids.add(transaction.transaction_id)
 
     total_cost = sum(cost for _, cost in categorized_transactions_and_costs)
-    logging.info(f"Batch {batch_number} cost: ${total_cost:.4f}")
+    logger.info(f"Batch {batch_number} cost: ${total_cost:.4f}")
 
     categorized_transactions = [
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
     new_total_processed = total_processed + len(batch_transactions)
-    logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
+    logger.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
 
     return {
         'categorized_transactions': [
@@ -157,22 +159,22 @@ def model_categorize_transaction(
 
         if parsed_category.category != INVALID_CATEGORY:
             transaction_time = time.time() - transaction_start_time
-            logging.warning(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
+            logger.warning(f"Successfully categorized transaction {transaction_id} in {transaction_time:.1f}s after {attempt + 1} attempt(s)")
             return parsed_category, total_cost
         elif attempt == max_retries:
             parsed_category.category = UNKNOWN_CATEGORY
             transaction_time = time.time() - transaction_start_time
-            logging.warning(
+            logger.warning(
                 f"Final attempt for transaction {transaction_id}, returning category: {parsed_category.category} after {transaction_time:.1f}s"
             )
             return parsed_category, total_cost
         else:
-            logging.info(
+            logger.info(
                 f"Attempt {attempt + 1} failed for transaction {transaction_id}, retrying..."
             )
 
     transaction_time = time.time() - transaction_start_time
-    logging.warning(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
+    logger.warning(f"Completed transaction {transaction_id} in {transaction_time:.1f}s")
     return parsed_category, total_cost
 
 
@@ -222,7 +224,7 @@ def model_analyze_transaction(
 
     api_time = time.time() - api_start_time
 
-    logging.warning(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
+    logger.warning(f"STATIC RESPONSE for transaction {transaction_id} returned in {api_time:.1f}s")
 
     total_cost = 0.00
 
@@ -250,13 +252,13 @@ def parse_category_from_analysis(
         if match:
             category = match.group(1).strip()
         else:
-            logging.warning(
+            logger.warning(
                 f"No assigned_category tag found in analysis response for transaction {uncategorized_transaction.transaction_id}"
             )
             category = UNKNOWN_CATEGORY
 
     if category not in valid_categories:
-        logging.warning(
+        logger.warning(
             f"Invalid category '{category}' for transaction {uncategorized_transaction.transaction_id}."
         )
         category = INVALID_CATEGORY
@@ -271,7 +273,7 @@ def parse_category_from_analysis(
         description=uncategorized_transaction.description,
         category=category,
     )
-    logging.info(f"Successfuly categorized transaction: {categorized_transaction}")
+    logger.info(f"Successfuly categorized transaction: {categorized_transaction}")
 
     return categorized_transaction
 
