@@ -37,11 +37,14 @@ formatter = logging.Formatter(
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
+logging.root.addHandler(file_handler)
+logging.root.addHandler(console_handler)
+
+logging.getLogger('server_flask').setLevel(log_level)
+logging.getLogger('categorize').setLevel(log_level)
+
 # Get logger for this module
 logger = logging.getLogger(__name__)
-logger.setLevel(log_level)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
 
 disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
 if disable_multi_threading:
