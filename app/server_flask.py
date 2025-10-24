@@ -41,11 +41,13 @@ formatter = logging.Formatter(
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
-logging.getLogger('server_flask').setLevel(log_level)
+# Set root logger level so logging.info() calls work, but don't add handlers to it
+logging.root.setLevel(log_level)
+
+# Only add handlers to your app's loggers - this prevents third-party logs from appearing
 logging.getLogger('server_flask').addHandler(file_handler)
 logging.getLogger('server_flask').addHandler(console_handler)
 
-logging.getLogger('categorize').setLevel(log_level)
 logging.getLogger('categorize').addHandler(file_handler)
 logging.getLogger('categorize').addHandler(console_handler)
 
