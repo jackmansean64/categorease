@@ -194,9 +194,6 @@ def model_analyze_transaction(
     api_start_time = time.time()
     transaction_id = getattr(uncategorized_transaction, 'transaction_id', 'unknown')
 
-    # Simulate API delay to more closely match real conditions
-    time.sleep(10)
-
     # Static response for debugging timeout issues
     static_response = """Let's solve this step by step:
 
