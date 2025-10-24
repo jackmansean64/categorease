@@ -156,10 +156,6 @@
 <script>
     Office.onReady(function (info) {
     });
-    // Office.onReady(() => {
-    //     OfficeExtension.config.extendedErrorLogging = true;
-    //     // Other code...
-    // });
 
     document.getElementById("btn-categorize-transactions").addEventListener("click", categorizeTransactionsPrompt);
     document.getElementById("btn-cancel-categorization").addEventListener("click", cancelCategorization);
@@ -167,7 +163,6 @@
     let categorizationInProgress = false;
     let cancellationRequested = false;
 
-    // Helper function to read Excel sheet data
     async function readSheetData(sheetName) {
         return await Excel.run(async (context) => {
             const sheet = context.workbook.worksheets.getItem(sheetName);
@@ -178,7 +173,6 @@
         });
     }
 
-    // Helper function to write categories back to Excel
     async function writeCategorizedTransactions(categorizedTransactions) {
         await Excel.run(async (context) => {
             const sheet = context.workbook.worksheets.getItem("Transactions");
@@ -194,13 +188,11 @@
                 throw new Error("Required columns not found");
             }
 
-            // Create map of transaction ID to category
             const categoryMap = new Map();
             categorizedTransactions.forEach(t => {
                 categoryMap.set(String(t.transaction_id), t.category);
             });
 
-            // Update categories
             let updatedCount = 0;
             for (let i = 1; i < range.values.length; i++) {
                 const transactionId = String(range.values[i][transactionIdCol]);
@@ -325,7 +317,6 @@
             const transactionsData = await readSheetData("Transactions");
             const categoriesData = await readSheetData("Categories");
 
-            // Step 1: Initialize batch processing
             const initResponse = await fetch(window.location.origin + "/categorize-transactions-batch-init", {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
@@ -349,7 +340,6 @@
 
             let totalProcessed = 0;
 
-            // Step 2: Process each batch
             for (let batchNumber = 0; batchNumber < totalBatches; batchNumber++) {
                 if (cancellationRequested) {
                     console.log("Cancellation requested, stopping processing");
@@ -359,7 +349,6 @@
 
                 console.log(`Processing batch ${batchNumber + 1}/${totalBatches}`);
 
-                // Read fresh data for each batch
                 const currentTransactionsData = await readSheetData("Transactions");
                 const currentCategoriesData = await readSheetData("Categories");
 
@@ -380,7 +369,6 @@
                     throw new Error(batchResult.error);
                 }
 
-                // Write categorized transactions back to Excel
                 if (batchResult.categorized_transactions && batchResult.categorized_transactions.length > 0) {
                     await writeCategorizedTransactions(batchResult.categorized_transactions);
                 }

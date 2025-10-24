@@ -22,17 +22,3 @@ It is very important that you recognize when you are not confident, as it better
 Output your assigned category at the bottom of your output between <assigned_category> tags.
 Assistant:
 """
-
-serialize_categories_template = """
-You will format the category specified beetweeen the <assigned_category> tags and the transactions details into a JSON object with the specified schema. Make sure your output adheres to this schema exactly. 
-
-### Transaction Details:
-{transaction}
-
-### Output JSON schema:
-{json_structure}
-
-Please output the JSON data with no additional text, preamble, separators, or extra characters.
-
-**Assistant:**
-"""

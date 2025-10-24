@@ -6,10 +6,7 @@ load_dotenv()
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-import jinja2
-import markupsafe
 from flask import Flask, Response, request, send_from_directory, jsonify
-from flask.templating import render_template
 from flask_cors import CORS
 from categorize import parse_transactions_data, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
@@ -43,7 +40,6 @@ logging.root.addHandler(console_handler)
 logging.getLogger('server_flask').setLevel(log_level)
 logging.getLogger('categorize').setLevel(log_level)
 
-# Get logger for this module
 logger = logging.getLogger(__name__)
 
 disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
