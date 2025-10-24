@@ -5,7 +5,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
 from pydantic import TypeAdapter
 from toolkit.language_models.token_costs import calculate_total_prompt_cost, ModelName
-from xlwings import Book
 import pandas as pd
 from toolkit.language_models.model_connection import ChatModelsSetup
 from models import Transaction, Category, CategorizedTransaction
@@ -31,36 +30,39 @@ def reset_categorization_session():
 
 
 def categorize_transaction_batch(
-    book: Book, socketio: SocketIO, batch_number: int, batch_size: int
-) -> Book:
+    transactions_data: list,
+    categories_data: list,
+    socketio: SocketIO,
+    batch_number: int,
+    batch_size: int
+) -> dict:
     """Process a specific batch of transactions"""
 
     previously_categorized_transactions, uncategorized_transactions = (
-        retrieve_transactions(book)
+        parse_transactions_data(transactions_data, categories_data)
     )
 
     unprocessed_transactions = [
         t for t in uncategorized_transactions if t.transaction_id not in processed_transaction_ids
     ]
 
-    try:
-        batch_info_sheet = book.sheets["_batch_info"]
-        total_processed = int(batch_info_sheet.range("B4").value or 0)
-    except:
-        logging.error("Could not read total processed from _batch_info sheet")
-        total_processed = 0
-    
+    total_processed = len(processed_transaction_ids)
+
     remaining_limit = MAX_TRANSACTIONS_TO_CATEGORIZE - total_processed
-    
+
     actual_batch_size = min(batch_size, remaining_limit, len(unprocessed_transactions))
     batch_transactions = unprocessed_transactions[:actual_batch_size]
 
     if not batch_transactions:
         logging.info(f"Batch {batch_number}: No unprocessed transactions remaining")
         reset_categorization_session()
-        return book
+        return {
+            'categorized_transactions': [],
+            'total_processed': total_processed,
+            'completed': True
+        }
 
-    categories = retrieve_categories(book)
+    categories = parse_categories_data(categories_data)
 
     logging.info(
         f"Processing batch {batch_number}: processing {len(batch_transactions)} transactions ({len(unprocessed_transactions)} unprocessed from {len(uncategorized_transactions)} total uncategorized)"
@@ -68,7 +70,7 @@ def categorize_transaction_batch(
 
     try:
         disable_multi_threading = os.getenv("DISABLE_MULTI_THREADING", "false").lower() == "true"
-        
+
         if disable_multi_threading:
             categorized_transactions_and_costs = [
                 model_categorize_transaction(
@@ -87,7 +89,7 @@ def categorize_transaction_batch(
                 categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
                 socketio=socketio,
             )
-        
+
     except Exception as e:
         logging.error(f"Batch {batch_number}: Processing failed with error: {e}")
         socketio.emit("error", {"error": str(e)})
@@ -104,17 +106,22 @@ def categorize_transaction_batch(
         transaction for transaction, _ in categorized_transactions_and_costs
     ]
 
-    try:
-        batch_info_sheet = book.sheets["_batch_info"]
-        new_total_processed = total_processed + len(batch_transactions)
-        batch_info_sheet.range("B4").value = new_total_processed
-        logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
-    except Exception as e:
-        logging.warning(f"Failed to update total_processed count: {e}")
+    new_total_processed = total_processed + len(batch_transactions)
+    logging.info(f"Batch {batch_number}: Updated total_processed to {new_total_processed}")
 
-    return update_categories_in_sheet_batch(
-        book, categorized_transactions, uncategorized_transactions
-    )
+    return {
+        'categorized_transactions': [
+            {
+                'transaction_id': t.transaction_id,
+                'category': t.category,
+                'description': t.description,
+                'date': t.date.isoformat() if hasattr(t.date, 'isoformat') else str(t.date)
+            }
+            for t in categorized_transactions if t.category != UNKNOWN_CATEGORY
+        ],
+        'total_processed': new_total_processed,
+        'completed': new_total_processed >= MAX_TRANSACTIONS_TO_CATEGORIZE or not unprocessed_transactions[actual_batch_size:]
+    }
 
 
 def model_categorize_transaction(
@@ -258,7 +265,8 @@ def parse_category_from_analysis(
     return categorized_transaction
 
 
-def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transaction]]:
+def parse_transactions_data(transactions_data: list, categories_data: list) -> Tuple[List[Transaction], List[Transaction]]:
+    """Parse transaction data from plain arrays (no xlwings)"""
     transaction_columns = [
         "Date",
         "Description",
@@ -268,8 +276,9 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
         "Transaction ID",
     ]
 
-    transactions_sheet = book.sheets["Transactions"]
-    transactions_data = transactions_sheet.range("A1").expand().value
+    if not transactions_data or len(transactions_data) < 2:
+        return [], []
+
     transactions_df = pd.DataFrame(transactions_data[1:], columns=transactions_data[0])
 
     transactions_df["Date"] = pd.to_datetime(transactions_df["Date"])
@@ -294,11 +303,13 @@ def retrieve_transactions(book: Book) -> Tuple[List[Transaction], List[Transacti
     return categorized_transactions, uncategorized_transactions
 
 
-def retrieve_categories(book: Book) -> List[Category]:
+def parse_categories_data(categories_data: list) -> List[Category]:
+    """Parse category data from plain arrays (no xlwings)"""
     category_columns = ["Category", "Group", "Type"]
 
-    categories_sheet = book.sheets["Categories"]
-    categories_data = categories_sheet.range("A1").expand().value
+    if not categories_data or len(categories_data) < 2:
+        return []
+
     categories_df = pd.DataFrame(categories_data[1:], columns=categories_data[0])
     for col in category_columns:
         if col not in categories_df.columns:
@@ -363,93 +374,3 @@ def _convert_df_to_categories(df: pd.DataFrame) -> List[Category]:
     return categories
 
 
-def update_categories_in_sheet(
-    book: Book, categorized_transactions: List[CategorizedTransaction]
-) -> Book:
-    """
-    Updates the categories in the transactions sheet for the categorized transactions.
-    If the transaction already has a category it will not be overwritten.
-    """
-    sheet = book.sheets["Transactions"]
-    headers = sheet.range("A1").expand("right").value
-    transaction_id_col = headers.index("Transaction ID") + 1
-    category_col = headers.index("Category") + 1
-
-    rows = sheet.tables[0].data_body_range.rows
-
-    for transaction in categorized_transactions:
-        if transaction.transaction_id is None:
-            print(
-                f"No transaction ID present for {transaction.description}, category can't be assigned."
-            )
-            continue
-
-        for i, row in enumerate(rows):
-            if str(row[transaction_id_col - 1].value) == str(
-                transaction.transaction_id
-            ):
-                if (
-                    not row[category_col - 1].value
-                    and transaction.category != UNKNOWN_CATEGORY
-                ):
-                    sheet.cells(i + 2, category_col).value = transaction.category
-                break
-            else:
-                logging.warning(
-                    f"categorized transaction with ID: {transaction.transaction_id} couldn't be matched to a transaction in the sheet."
-                )
-
-    return book
-
-
-def update_categories_in_sheet_batch(
-    book: Book,
-    categorized_transactions: List[CategorizedTransaction],
-    all_uncategorized_transactions: List[Transaction],
-) -> Book:
-    """Update Excel sheet with categorized transactions from a specific batch"""
-
-    if not categorized_transactions:
-        return book
-
-    sheet = book.sheets["Transactions"]
-    headers = sheet.range("A1").expand("right").value
-    transaction_id_col = headers.index("Transaction ID") + 1
-    category_col = headers.index("Category") + 1
-
-    rows = sheet.tables[0].data_body_range.rows
-
-    transaction_id_to_category = {
-        str(transaction.transaction_id): transaction.category
-        for transaction in categorized_transactions
-        if transaction.transaction_id is not None
-        and transaction.category != UNKNOWN_CATEGORY
-    }
-
-    updated_count = 0
-    for transaction in categorized_transactions:
-        if transaction.transaction_id is None:
-            logging.warning(
-                f"No transaction ID present for {transaction.description}, category can't be assigned."
-            )
-            continue
-
-        transaction_id_str = str(transaction.transaction_id)
-        if transaction_id_str not in transaction_id_to_category:
-            continue
-
-        for i, row in enumerate(rows):
-            if str(row[transaction_id_col - 1].value) == transaction_id_str:
-                if not row[category_col - 1].value:
-                    sheet.cells(i + 2, category_col).value = transaction.category
-                    updated_count += 1
-                    if logging.getLogger().isEnabledFor(logging.DEBUG):
-                        logging.debug(
-                            f"Updated row {i + 2} with category: {transaction.category}"
-                        )
-                break
-
-    logging.info(
-        f"Batch update complete: {updated_count} transactions updated with categories"
-    )
-    return book

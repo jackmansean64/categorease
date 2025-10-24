@@ -11,12 +11,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import jinja2
 import markupsafe
-import xlwings as xw
-from flask import Flask, Response, request, send_from_directory
+from flask import Flask, Response, request, send_from_directory, jsonify
 from flask.templating import render_template
 from flask_cors import CORS
 from flask_socketio import SocketIO
-from categorize import retrieve_transactions, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
+from categorize import parse_transactions_data, categorize_transaction_batch, MAX_TRANSACTIONS_TO_CATEGORIZE
 
 TRANSACTION_BATCH_SIZE = 5
 
@@ -81,129 +80,67 @@ def root():
     return {"status": "ok"}
 
 
-@app.route("/hello", methods=["POST"])
-def hello():
-    # Instantiate a Book object with the deserialized request body
-    with xw.Book(json=request.json) as book:
-        # Use xlwings as usual
-        sheet = book.sheets[0]
-        cell = sheet["A1"]
-        if cell.value == "Hello xlwings!":
-            cell.value = "Bye xlwings!"
-        else:
-            cell.value = "Hello xlwings!"
-
-        # Pass the following back as the response
-        return book.json()
-
-
 @app.route("/categorize-transactions-prompt", methods=["POST"])
 def categorize_transactions_prompt():
-    with xw.Book(json=request.json) as book:
-        _, uncategorized_transactions = retrieve_transactions(book)
-        num_uncategorized = len(uncategorized_transactions)
-        
-        if num_uncategorized > MAX_TRANSACTIONS_TO_CATEGORIZE:
-            book.app.alert(
-                prompt=f"Found {num_uncategorized} uncategorized transactions. Only {MAX_TRANSACTIONS_TO_CATEGORIZE} transactions can be processed at a time. Click OK to process the first {MAX_TRANSACTIONS_TO_CATEGORIZE} transactions, or Cancel to abort.",
-                title="Batch Size Limit",
-                buttons="ok_cancel",
-                callback="categorizeTransactions",
-            )
-        else:
-            book.app.alert(
-                prompt=f"This will categorize {num_uncategorized} uncategorized transactions.",
-                title="Are you sure?",
-                buttons="ok_cancel",
-                callback="categorizeTransactions",
-            )
-        return book.json()
+    """Check how many uncategorized transactions exist"""
+    data = request.json
+    transactions_data = data.get('transactions', [])
+    categories_data = data.get('categories', [])
+
+    _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
+    num_uncategorized = len(uncategorized_transactions)
+
+    return jsonify({
+        'num_uncategorized': num_uncategorized,
+        'exceeds_limit': num_uncategorized > MAX_TRANSACTIONS_TO_CATEGORIZE,
+        'limit': MAX_TRANSACTIONS_TO_CATEGORIZE
+    })
 
 
 @app.route("/categorize-transactions-batch-init", methods=["POST"])
 def categorize_transactions_batch_init():
-    """Initialize batch processing and store batch info in Excel"""
-    with xw.Book(json=request.json) as book:
-        previously_categorized, uncategorized_transactions = retrieve_transactions(book)
-        total_uncategorized = len(uncategorized_transactions)
+    """Initialize batch processing configuration"""
+    data = request.json
+    transactions_data = data.get('transactions', [])
+    categories_data = data.get('categories', [])
 
-        # Store batch info in a hidden sheet that client can read
-        try:
-            # Try to delete existing temp sheet
-            try:
-                book.sheets["_batch_info"].delete()
-            except:
-                pass
+    _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
+    total_uncategorized = len(uncategorized_transactions)
 
-            temp_sheet = book.sheets.add("_batch_info")
-            temp_sheet.range("A1").value = "total_uncategorized"
-            temp_sheet.range("B1").value = total_uncategorized
-            temp_sheet.range("A2").value = "current_batch"
-            temp_sheet.range("B2").value = 0
-            temp_sheet.range("A3").value = "batch_size"
-            temp_sheet.range("B3").value = TRANSACTION_BATCH_SIZE
-            temp_sheet.range("A4").value = "total_processed"
-            temp_sheet.range("B4").value = 0
-            temp_sheet.range("A5").value = "transaction_limit"
-            temp_sheet.range("B5").value = MAX_TRANSACTIONS_TO_CATEGORIZE
-
-        except Exception as e:
-            logging.error(f"Error creating batch info sheet: {e}")
-
-        return book.json()
+    return jsonify({
+        'total_uncategorized': total_uncategorized,
+        'batch_size': TRANSACTION_BATCH_SIZE,
+        'transaction_limit': MAX_TRANSACTIONS_TO_CATEGORIZE
+    })
 
 
 @app.route("/categorize-transactions-batch", methods=["POST"])
-def categorize_transactions_batch():
+def categorize_transactions_batch_endpoint():
     """Process a specific batch of transactions"""
-    with xw.Book(json=request.json) as book:
-        try:
-            temp_sheet = book.sheets["_batch_info"]
-            current_batch = int(temp_sheet.range("B2").value)
-            batch_size = int(temp_sheet.range("B3").value)
+    try:
+        data = request.json
+        transactions_data = data.get('transactions', [])
+        categories_data = data.get('categories', [])
+        batch_number = data.get('batch_number', 0)
+        batch_size = data.get('batch_size', TRANSACTION_BATCH_SIZE)
 
-            book = categorize_transaction_batch(
-                book, socketio, current_batch, batch_size
-            )
+        logging.info(f"Processing batch {batch_number} with {len(transactions_data)} total transactions")
 
-            temp_sheet.range("B2").value = current_batch + 1
+        categorized_results = categorize_transaction_batch(
+            transactions_data=transactions_data,
+            categories_data=categories_data,
+            socketio=socketio,
+            batch_number=batch_number,
+            batch_size=batch_size
+        )
 
-        except Exception as e:
-            logging.error(f"Error in batch processing: {e}")
+        return jsonify(categorized_results)
 
-        return book.json()
-
-
-
-
-@app.route("/xlwings/alert")
-def alert():
-    """Boilerplate required by book.app.alert() and to show unhandled exceptions"""
-    prompt = request.args.get("prompt")
-    title = request.args.get("title")
-    buttons = request.args.get("buttons")
-    mode = request.args.get("mode")
-    callback = request.args.get("callback")
-    return render_template(
-        "xlwings-alert.html",
-        prompt=markupsafe.escape(prompt).replace("\n", markupsafe.Markup("<br>")),
-        title=title,
-        buttons=buttons,
-        mode=mode,
-        callback=callback,
-    )
+    except Exception as e:
+        logging.error(f"Error in batch processing: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
-# Add xlwings.html as additional source for templates so the /xlwings/alert endpoint
-# will find xlwings-alert.html. "mytemplates" can be a dummy if the app doesn't use
-# own templates
-loader = jinja2.ChoiceLoader(
-    [
-        jinja2.FileSystemLoader(str(this_dir / "mytemplates")),
-        jinja2.PackageLoader("xlwings", "html"),
-    ]
-)
-app.jinja_loader = loader
 
 
 # Serve static files (HTML and icons)
@@ -214,8 +151,8 @@ def static_proxy(path):
 
 
 @app.errorhandler(Exception)
-def xlwings_exception_handler(error):
-    # This handles all exceptions, so you may want to make this more restrictive
+def exception_handler(error):
+    logging.error(f"Unhandled exception: {error}", exc_info=True)
     return Response(str(error), status=500)
 
 
