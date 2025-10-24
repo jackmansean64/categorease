@@ -127,6 +127,13 @@
         <button class="btn btn-categorize" id="btn-categorize-transactions" type="button">Categorize Transactions
         </button>
     </div>
+    <div class="confirmation-container" style="display: none; margin: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+        <div class="confirmation-message" style="margin-bottom: 15px; font-size: 1rem;"></div>
+        <div class="text-center">
+            <button class="btn btn-categorize" id="btn-confirm-yes" type="button" style="margin-right: 10px;">Yes</button>
+            <button class="btn btn-cancel" id="btn-confirm-no" type="button">No</button>
+        </div>
+    </div>
     <div class="progress-container">
         <div class="progress">
             <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0"
@@ -200,6 +207,40 @@
         });
     }
 
+    function showConfirmation(message) {
+        return new Promise((resolve) => {
+            const confirmContainer = document.querySelector('.confirmation-container');
+            const confirmMessage = document.querySelector('.confirmation-message');
+            const btnYes = document.getElementById('btn-confirm-yes');
+            const btnNo = document.getElementById('btn-confirm-no');
+            const btnCategorize = document.getElementById('btn-categorize-transactions');
+
+            confirmMessage.textContent = message;
+            confirmContainer.style.display = 'block';
+            btnCategorize.style.display = 'none';
+
+            const handleYes = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            const handleNo = () => {
+                cleanup();
+                resolve(false);
+            };
+
+            const cleanup = () => {
+                btnYes.removeEventListener('click', handleYes);
+                btnNo.removeEventListener('click', handleNo);
+                confirmContainer.style.display = 'none';
+                btnCategorize.style.display = 'inline-flex';
+            };
+
+            btnYes.addEventListener('click', handleYes);
+            btnNo.addEventListener('click', handleNo);
+        });
+    }
+
     async function categorizeTransactionsPrompt() {
         socket.emit('test_connection');
 
@@ -218,20 +259,25 @@
 
             const result = await response.json();
 
+            if (result.num_uncategorized === 0) {
+                await showConfirmation("No uncategorized transactions found.");
+                return;
+            }
+
+            let message;
             if (result.exceeds_limit) {
-                if (confirm(`You have ${result.num_uncategorized} uncategorized transactions. Only the first ${result.limit} will be processed. Continue?`)) {
-                    await categorizeTransactions();
-                }
-            } else if (result.num_uncategorized === 0) {
-                alert("No uncategorized transactions found.");
+                message = `You have ${result.num_uncategorized} uncategorized transactions. Only the first ${result.limit} will be processed. Continue?`;
             } else {
-                if (confirm(`Categorize ${result.num_uncategorized} transactions?`)) {
-                    await categorizeTransactions();
-                }
+                message = `Categorize ${result.num_uncategorized} transactions?`;
+            }
+
+            const confirmed = await showConfirmation(message);
+            if (confirmed) {
+                await categorizeTransactions();
             }
         } catch (error) {
             console.error("Error checking transactions:", error);
-            alert("Error: " + error.message);
+            await showConfirmation("Error: " + error.message);
         }
     }
 
@@ -349,7 +395,6 @@
             resetUI();
         } catch (error) {
             console.error("Batch processing failed:", error);
-            alert("Error: " + error.message);
             resetUI();
         }
     }

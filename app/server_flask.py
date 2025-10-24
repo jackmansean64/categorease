@@ -147,6 +147,7 @@ def categorize_transactions_batch_endpoint():
 # This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
+    logging.debug(f"Static file request for: {path}")
     return send_from_directory(this_dir, path)
 
 
