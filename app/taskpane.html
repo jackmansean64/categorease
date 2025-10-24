@@ -195,15 +195,18 @@
             });
 
             // Update categories
+            let updatedCount = 0;
             for (let i = 1; i < range.values.length; i++) {
                 const transactionId = String(range.values[i][transactionIdCol]);
                 if (categoryMap.has(transactionId) && !range.values[i][categoryCol]) {
-                    const cellAddress = sheet.getCell(i, categoryCol).address;
-                    sheet.getRange(cellAddress).values = [[categoryMap.get(transactionId)]];
+                    const cell = sheet.getCell(i, categoryCol);
+                    cell.values = [[categoryMap.get(transactionId)]];
+                    updatedCount++;
                 }
             }
 
             await context.sync();
+            console.log(`Updated ${updatedCount} transactions with categories`);
         });
     }
 
