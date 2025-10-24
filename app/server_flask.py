@@ -41,10 +41,13 @@ formatter = logging.Formatter(
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
-logger = logging.getLogger()
-logger.setLevel(log_level)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+logging.getLogger('server_flask').setLevel(log_level)
+logging.getLogger('server_flask').addHandler(file_handler)
+logging.getLogger('server_flask').addHandler(console_handler)
+
+logging.getLogger('categorize').setLevel(log_level)
+logging.getLogger('categorize').addHandler(file_handler)
+logging.getLogger('categorize').addHandler(console_handler)
 
 @app.route("/")
 def root():
