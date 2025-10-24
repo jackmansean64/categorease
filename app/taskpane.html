@@ -244,8 +244,6 @@
     }
 
     async function categorizeTransactionsPrompt() {
-        socket.emit('test_connection');
-
         try {
             const transactionsData = await readSheetData("Transactions");
             const categoriesData = await readSheetData("Categories");

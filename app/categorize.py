@@ -31,7 +31,6 @@ def reset_categorization_session():
 def categorize_transaction_batch(
     transactions_data: list,
     categories_data: list,
-    socketio: SocketIO,
     batch_number: int,
     batch_size: int
 ) -> dict:
