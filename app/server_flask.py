@@ -111,8 +111,6 @@ def categorize_transactions_batch_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
-# Serve static files (HTML and icons)
-# This could also be handled by an external web server such as nginx, etc.
 @app.route("/<path:path>")
 def static_proxy(path):
     from werkzeug.exceptions import NotFound
