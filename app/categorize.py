@@ -277,9 +277,9 @@ def parse_category_from_analysis(
 def remove_blank_transaction_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Remove rows where Date, Description, and Amount are all empty/null"""
     return df[
-        ~(df["Date"].isna() &
-          df["Description"].isna() &
-          df["Amount"].isna())
+        ~((df["Date"].isna() or df["Date"] == '') &
+          (df["Description"].isna() or df["Description"] == '') & 
+        (df["Amount"].isna() or df["Amount"] == ""))
     ]
 
 
