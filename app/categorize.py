@@ -357,8 +357,6 @@ def clean_amount(amount):
 def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     df = df.copy()
 
-    df["Amount"] = df["Amount"].apply(clean_amount)
-
     columns_to_clean = [
         "Category",
         "Account",
@@ -370,7 +368,11 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
     transactions = []
     for index, row in df.iterrows():
         try:
-            transaction = Transaction(**row.to_dict())
+            row_dict = row.to_dict()
+            if 'Amount' in row_dict:
+                row_dict['Amount'] = clean_amount(row_dict['Amount'])
+
+            transaction = Transaction(**row_dict)
             transactions.append(transaction)
         except Exception as e:
             excel_row_num = index + 2
