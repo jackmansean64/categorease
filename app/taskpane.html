@@ -258,6 +258,11 @@
 
             const result = await response.json();
 
+            if (result.error) {
+                await showConfirmation("Error: " + result.error);
+                return;
+            }
+
             if (result.num_uncategorized === 0) {
                 await showConfirmation("No uncategorized transactions found.");
                 return;
@@ -327,6 +332,11 @@
             });
 
             const initResult = await initResponse.json();
+
+            if (initResult.error) {
+                throw new Error(initResult.error);
+            }
+
             const totalTransactions = initResult.total_uncategorized;
             const batchSize = initResult.batch_size;
             const TRANSACTION_LIMIT = initResult.transaction_limit;

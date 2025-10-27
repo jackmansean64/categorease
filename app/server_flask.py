@@ -54,42 +54,56 @@ def root():
 @app.route("/categorize-transactions-prompt", methods=["POST"])
 def categorize_transactions_prompt():
     """Check how many uncategorized transactions exist"""
-    data = request.json
-    transactions_data = data.get('transactions', [])
-    categories_data = data.get('categories', [])
+    try:
+        data = request.json or {}
+        transactions_data = data.get('transactions', [])
+        categories_data = data.get('categories', [])
 
-    _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
-    num_uncategorized = len(uncategorized_transactions)
+        _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
+        num_uncategorized = len(uncategorized_transactions)
 
-    return jsonify({
-        'num_uncategorized': num_uncategorized,
-        'exceeds_limit': num_uncategorized > MAX_TRANSACTIONS_TO_CATEGORIZE,
-        'limit': MAX_TRANSACTIONS_TO_CATEGORIZE
-    })
+        return jsonify({
+            'num_uncategorized': num_uncategorized,
+            'exceeds_limit': num_uncategorized > MAX_TRANSACTIONS_TO_CATEGORIZE,
+            'limit': MAX_TRANSACTIONS_TO_CATEGORIZE
+        })
+    except ValueError as e:
+        logger.error(f"Data validation error in prompt: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in categorize_transactions_prompt: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/categorize-transactions-batch-init", methods=["POST"])
 def categorize_transactions_batch_init():
     """Initialize batch processing configuration"""
-    data = request.json
-    transactions_data = data.get('transactions', [])
-    categories_data = data.get('categories', [])
+    try:
+        data = request.json or {}
+        transactions_data = data.get('transactions', [])
+        categories_data = data.get('categories', [])
 
-    _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
-    total_uncategorized = len(uncategorized_transactions)
+        _, uncategorized_transactions = parse_transactions_data(transactions_data, categories_data)
+        total_uncategorized = len(uncategorized_transactions)
 
-    return jsonify({
-        'total_uncategorized': total_uncategorized,
-        'batch_size': TRANSACTION_BATCH_SIZE,
-        'transaction_limit': MAX_TRANSACTIONS_TO_CATEGORIZE
-    })
+        return jsonify({
+            'total_uncategorized': total_uncategorized,
+            'batch_size': TRANSACTION_BATCH_SIZE,
+            'transaction_limit': MAX_TRANSACTIONS_TO_CATEGORIZE
+        })
+    except ValueError as e:
+        logger.error(f"Data validation error in batch init: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error in categorize_transactions_batch_init: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/categorize-transactions-batch", methods=["POST"])
 def categorize_transactions_batch_endpoint():
     """Process a specific batch of transactions"""
     try:
-        data = request.json
+        data = request.json or {}
         transactions_data = data.get('transactions', [])
         categories_data = data.get('categories', [])
         batch_number = data.get('batch_number', 0)
@@ -106,6 +120,9 @@ def categorize_transactions_batch_endpoint():
 
         return jsonify(categorized_results)
 
+    except ValueError as e:
+        logger.error(f"Data validation error in batch processing: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Error in batch processing: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
