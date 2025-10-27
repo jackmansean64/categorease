@@ -390,6 +390,7 @@
             resetUI();
         } catch (error) {
             console.error("Batch processing failed:", error);
+            await showConfirmation("Error: " + error.message);
             resetUI();
         }
     }

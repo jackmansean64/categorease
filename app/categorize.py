@@ -88,6 +88,14 @@ def categorize_transaction_batch(
                 categorized_transactions=previously_categorized_transactions[:TRANSACTION_HISTORY_LENGTH],
             )
 
+    except ValueError as e:
+        logger.error(f"Batch {batch_number}: Data validation error: {e}")
+        return {
+            'error': str(e),
+            'categorized_transactions': [],
+            'total_processed': total_processed,
+            'completed': True
+        }
     except Exception as e:
         logger.error(f"Batch {batch_number}: Processing failed with error: {e}")
         raise e
@@ -320,12 +328,30 @@ def parse_categories_data(categories_data: list) -> List[Category]:
 
 
 def clean_amount(amount):
-    if pd.isna(amount):
+    """Clean and validate amount values, raising descriptive errors for invalid data"""
+    if pd.isna(amount) or amount is None:
         return None
+
+    if isinstance(amount, (int, float)):
+        return float(amount)
+
     if isinstance(amount, str):
-        cleaned = amount.replace("$", "").replace(",", "").strip()
-        return float(cleaned)
-    return float(amount)
+        if not amount.strip():
+            return None
+
+        try:
+            cleaned = amount.replace("$", "").replace(",", "").strip()
+            if not cleaned:
+                return None
+            return float(cleaned)
+        except ValueError:
+            raise ValueError(
+                f"Invalid amount value: '{amount}'. Amount must be a number (e.g., '100', '$100.50', '1,234.56')"
+            )
+
+    raise ValueError(
+        f"Invalid amount type: '{amount}' (type: {type(amount).__name__}). Amount must be a number or numeric string"
+    )
 
 
 def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
