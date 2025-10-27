@@ -274,6 +274,15 @@ def parse_category_from_analysis(
     return categorized_transaction
 
 
+def remove_blank_transaction_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows where Date, Description, and Amount are all empty/null"""
+    return df[
+        ~(df["Date"].isna() &
+          df["Description"].isna() &
+          df["Amount"].isna())
+    ]
+
+
 def parse_transactions_data(transactions_data: list, categories_data: list) -> Tuple[List[Transaction], List[Transaction]]:
     """Parse transaction data from plain arrays (no xlwings)"""
     transaction_columns = [
@@ -289,6 +298,11 @@ def parse_transactions_data(transactions_data: list, categories_data: list) -> T
         return [], []
 
     transactions_df = pd.DataFrame(transactions_data[1:], columns=transactions_data[0])
+
+    transactions_df = remove_blank_transaction_rows(transactions_df)
+
+    if len(transactions_df) == 0:
+        return [], []
 
     transactions_df["Date"] = pd.to_datetime(transactions_df["Date"])
     transactions_df = transactions_df.astype(
@@ -312,6 +326,11 @@ def parse_transactions_data(transactions_data: list, categories_data: list) -> T
     return categorized_transactions, uncategorized_transactions
 
 
+def remove_blank_category_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows where Category field is empty"""
+    return df[df["Category"].notna()]
+
+
 def parse_categories_data(categories_data: list) -> List[Category]:
     """Parse category data from plain arrays (no xlwings)"""
     category_columns = ["Category", "Group", "Type"]
@@ -320,6 +339,12 @@ def parse_categories_data(categories_data: list) -> List[Category]:
         return []
 
     categories_df = pd.DataFrame(categories_data[1:], columns=categories_data[0])
+
+    categories_df = remove_blank_category_rows(categories_df)
+
+    if len(categories_df) == 0:
+        return []
+
     for col in category_columns:
         if col not in categories_df.columns:
             categories_df[col] = None
