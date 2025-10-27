@@ -57,14 +57,14 @@
         .btn-cancel {
             font-size: 1rem;
             padding: 10px 20px;
-            background-color: #dc3545;
-            border-color: #dc3545;
+            background-color: #fd7e14;
+            border-color: #fd7e14;
             color: #fff;
         }
 
         .btn-cancel:hover {
-            background-color: #c82333;
-            border-color: #bd2130;
+            background-color: #e66a00;
+            border-color: #dc6502;
         }
 
         .confirmation-container .btn-cancel {
@@ -208,7 +208,7 @@
         });
     }
 
-    function showConfirmation(message) {
+    function showConfirmation(message, isQuestion = false) {
         return new Promise((resolve) => {
             const confirmContainer = document.querySelector('.confirmation-container');
             const confirmMessage = document.querySelector('.confirmation-message');
@@ -219,6 +219,16 @@
             confirmMessage.textContent = message;
             confirmContainer.style.display = 'block';
             btnCategorize.style.display = 'none';
+
+            if (isQuestion) {
+                btnYes.textContent = 'Yes';
+                btnYes.style.display = 'inline-block';
+                btnNo.style.display = 'inline-block';
+            } else {
+                btnYes.textContent = 'OK';
+                btnYes.style.display = 'inline-block';
+                btnNo.style.display = 'none';
+            }
 
             const handleYes = () => {
                 cleanup();
@@ -259,12 +269,12 @@
             const result = await response.json();
 
             if (result.error) {
-                await showConfirmation("Error: " + result.error);
+                await showConfirmation("Error: " + result.error, false);
                 return;
             }
 
             if (result.num_uncategorized === 0) {
-                await showConfirmation("No uncategorized transactions found.");
+                await showConfirmation("No uncategorized transactions found.", false);
                 return;
             }
 
@@ -275,13 +285,13 @@
                 message = `Categorize ${result.num_uncategorized} transactions?`;
             }
 
-            const confirmed = await showConfirmation(message);
+            const confirmed = await showConfirmation(message, true);
             if (confirmed) {
                 await categorizeTransactions();
             }
         } catch (error) {
             console.error("Error checking transactions:", error);
-            await showConfirmation("Error: " + error.message);
+            await showConfirmation("Error: " + error.message, false);
         }
     }
 
@@ -400,7 +410,7 @@
             resetUI();
         } catch (error) {
             console.error("Batch processing failed:", error);
-            await showConfirmation("Error: " + error.message);
+            await showConfirmation("Error: " + error.message, false);
             resetUI();
         }
     }
