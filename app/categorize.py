@@ -276,11 +276,13 @@ def parse_category_from_analysis(
 
 def remove_blank_transaction_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Remove rows where Date, Description, and Amount are all empty/null"""
-    return df[
-        ~((df["Date"].isna() | (df["Date"] == '')) &
-          (df["Description"].isna() | (df["Description"] == '')) &
-          (df["Amount"].isna() | (df["Amount"] == "")))
-    ]
+    
+    date_blank = df["Date"].isna() | (df["Date"].astype(str).str.strip() == '')
+    description_blank = df["Description"].isna() | (df["Description"].astype(str).str.strip() == '')
+    amount_blank = df["Amount"].isna() | (df["Amount"].astype(str).str.strip() == '')
+
+    # Keep rows where at least one of these fields has a value
+    return df[~(date_blank & description_blank & amount_blank)]
 
 
 def parse_transactions_data(transactions_data: list, categories_data: list) -> Tuple[List[Transaction], List[Transaction]]:
