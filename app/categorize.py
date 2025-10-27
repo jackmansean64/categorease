@@ -377,7 +377,7 @@ def _convert_df_to_transactions(df: pd.DataFrame) -> List[Transaction]:
         except Exception as e:
             excel_row_num = index + 2
             raise ValueError(
-                f"Excel row {excel_row_num} failed validation: {str(e)}\nData: {row.to_dict()}"
+                f"Excel row {excel_row_num} failed validation: {str(e)}"
             )
 
     return transactions
